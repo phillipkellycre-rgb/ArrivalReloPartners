@@ -1063,7 +1063,8 @@ const Data = {
   async assignAgent(ref, agentId){
     const r = relById(ref); if(!r) return {ok:false};
     const { error } = await sb().from('relocations')
-      .update({ agent_id: agentId, status:'agent_assigned', last_activity_at:new Date().toISOString() })
+      .update({ agent_id: agentId, status:'agent_assigned', progress: Math.max(r.progress||0, 42),
+                last_activity_at:new Date().toISOString() })
       .eq('id', r.uuid);
     if(error){ console.error('[data] assign', error); return {ok:false, error}; }
     await sb().from('milestones').insert({ relocation_id:r.uuid, label:'Agent assigned', created_by: ME.id });
@@ -1075,6 +1076,23 @@ const Data = {
       relocation_id:r.uuid, label, note:note||null,
       employer_visible: employerVisible!==false, created_by: ME.id });
     if(error){ console.error('[data] milestone', error); return {ok:false, error}; }
+    return Data.refresh();
+  },
+  /* One write for the whole "agent posts a milestone" action: status, progress,
+     the milestone itself, and (if a conversation already exists) a note in the
+     thread — all in one refresh rather than four. */
+  async postAgentUpdate(ref, msLabel, note){
+    const r = relById(ref); if(!r) return {ok:false};
+    const c = sb(); if(!c || !ME) return {ok:false};
+    const patch = { last_activity_at: new Date().toISOString() };
+    if(msLabel==='Closed') patch.progress = 100;
+    else patch.progress = Math.min(100, (r.progress||0) + 5);
+    if(MS_STATUS[msLabel]) patch.status = dbStage(MS_STATUS[msLabel]);
+    const { error } = await c.from('relocations').update(patch).eq('id', r.uuid);
+    if(error){ console.error('[data] postAgentUpdate', error); return {ok:false, error, message:'We could not save that update. Please try again.'}; }
+    await c.from('milestones').insert({ relocation_id:r.uuid, label:msLabel, note:note||null, employer_visible:true, created_by:ME.id });
+    const th = (S.threads||[]).find(t=>t.rel===ref);
+    if(th) await c.from('messages').insert({ thread_id:th.id, sender_id:ME.id, body:'Milestone: '+msLabel+(note?', '+note:'') });
     return Data.refresh();
   },
   async postMessage(threadId, body){
@@ -1091,6 +1109,12 @@ const Data = {
   },
   async markNotificationRead(id){
     await sb().from('notifications').update({ read_at:new Date().toISOString() }).eq('id', id);
+    return Data.refresh();
+  },
+  async markAllNotificationsRead(){
+    const c = sb(); if(!c || !ME) return {ok:false};
+    const { error } = await c.from('notifications').update({ read_at:new Date().toISOString() }).is('read_at', null);
+    if(error){ console.error('[data] markAllNotifications', error); return {ok:false, error}; }
     return Data.refresh();
   },
   /* Creates the relocation, then the opening milestone. If the insert fails
@@ -1164,6 +1188,29 @@ const Data = {
     return {ok:true, id:data.id, name:data.name};
   },
 
+  /* Only ever moves a company to the Customer stage; the general "move to any
+     pipeline stage" action is not wired here, since the modal's stage options
+     (New Prospect, Contacted, Discovery Scheduled…) don't match the stage
+     values loadAll() already reads from the database (prospect, in_discussion,
+     won_onboarding, customer, past, lost) — reconciling those needs a decision
+     about the real schema, not a guess. */
+  async convertCompanyToCustomer(id, tier){
+    const c = sb(); if(!c || !ME) return {ok:false};
+    const row = {
+      stage: 'customer', tier, customer_since: new Date().toISOString().slice(0,10),
+      next_step: 'Kickoff scheduled, welcome packet sent',
+    };
+    const { error } = await c.from('companies').update(row).eq('id', id);
+    if(error){
+      console.error('[data] convertCompany', error);
+      return {ok:false, error, message: error.code==='42501'
+        ? 'Only staff can activate a customer.'
+        : 'We could not activate that customer. Please try again.'};
+    }
+    await Data.refresh();
+    return {ok:true};
+  },
+
   /* Add an agent to the routing roster. The agent does NOT get portal access
      here: that is a separate invitation, so adding someone to the roster and
      granting them a login stay separate decisions. */
@@ -1195,6 +1242,37 @@ const Data = {
     }
     await Data.refresh();
     return {ok:true, id:data.id, name:data.full_name};
+  },
+
+  async createThread(ref, subject, audience){
+    const c = sb(); if(!c || !ME) return {ok:false};
+    const r = ref ? relById(ref) : null;
+    const { data, error } = await c.from('message_threads')
+      .insert({ relocation_id: r ? r.uuid : null, subject, audience: audience||'all' })
+      .select('id').single();
+    if(error){
+      console.error('[data] createThread', error);
+      return {ok:false, error, message:'We could not start that conversation. Please try again.'};
+    }
+    await Data.refresh();
+    return {ok:true, id:data.id};
+  },
+  async createTask(f){
+    const c = sb(); if(!c || !ME) return {ok:false};
+    const title = String(f.title||'').trim();
+    if(!title) return {ok:false, message:'A task title is required.'};
+    const r = f.rel ? relById(f.rel) : null;
+    const row = {
+      title, relocation_id: r ? r.uuid : null,
+      due_on: f.due || null, priority: f.pri || 'Medium', assigned_to: f.owner || null,
+    };
+    const { data, error } = await c.from('tasks').insert(row).select('id,title').single();
+    if(error){
+      console.error('[data] createTask', error);
+      return {ok:false, error, message:'We could not save that task. Please try again.'};
+    }
+    await Data.refresh();
+    return {ok:true, id:data.id, title:data.title};
   },
 
   async invite(email, role, companyId, agentId, fullName){
@@ -2236,10 +2314,14 @@ function toggleNotif(ev){
     </div></div>`;
   document.addEventListener('click', function close(){ dd.innerHTML=''; document.removeEventListener('click', close); });
 }
-function markAllNotif(){ S.notifications.forEach(n=>n.read=true); save(); route(); toast('Notifications','All notifications marked as read.','ok'); }
-function openNotif(id){
+async function markAllNotif(){
+  const r = await Data.markAllNotificationsRead();
+  if(r && r.ok===false){ toast('Not saved','We could not update your notifications. Please try again.','err'); return; }
+  toast('Notifications','All notifications marked as read.','ok');
+}
+async function openNotif(id){
   const n = S.notifications.find(x=>x.id===id); if(!n) return;
-  n.read = true; save();
+  await Data.markNotificationRead(id);
   if(n.rel) nav('/corporate/relocations/'+n.rel); else nav('/corporate');
 }
 
@@ -2417,11 +2499,11 @@ function taskRow(t){
     </div>
   </div>`;
 }
-function toggleTask(id){
+async function toggleTask(id){
   const t = S.tasks.find(t=>t.id===id); if(!t) return;
-  t.done = !t.done; save();
-  toast(t.done?'Task completed':'Task reopened', t.title, t.done?'ok':'');
-  route();
+  const r = await Data.toggleTask(id, !t.done);
+  if(r && r.ok===false){ toast('Could not save','That change was not stored. Please try again.','err'); return; }
+  toast(!t.done?'Task completed':'Task reopened', t.title, 'ok');
 }
 
 /* =========================================================
@@ -2663,13 +2745,10 @@ function reloMatching(r){
 }
 function approveMatch(relId, agentId){
   const r = relById(relId), a = agentById(agentId);
-  confirmModal('Approve agent match?', `<b>${esc(a.name)}</b> (${esc(a.brokerage)}) will be introduced to <b>${esc(r.emp)}</b>. Arrival will brief the agent and confirm the first call within one business day.`, 'Approve match', ()=>{
-    r.agentId = agentId; r.status = 'Agent Assigned'; r.progress = Math.max(r.progress, 42); r.last = '2026-06-11';
-    S.activity.unshift({id:'a-x'+Date.now(),ts:'2026-06-11 '+new Date().toTimeString().slice(0,5),rel:relId,who:(ME?ME.name:'Arrival'),kind:'match',text:`Agent match approved: ${a.name}, ${a.brokerage}. Introduction underway.`});
-    S.notifications.unshift({id:'n-x'+Date.now(),ts:'2026-06-11 '+new Date().toTimeString().slice(0,5),kind:'match',text:`Agent approved for ${r.emp}, ${a.name}`,rel:relId,read:true});
-    const t = S.tasks.find(t=>t.rel===relId && t.kind==='match' && !t.done); if(t) t.done = true;
-    delete S.candidates[relId];
-    save(); RELO_TAB='timeline'; route();
+  confirmModal('Approve agent match?', `<b>${esc(a.name)}</b> (${esc(a.brokerage)}) will be introduced to <b>${esc(r.emp)}</b>. Arrival will brief the agent and confirm the first call within one business day.`, 'Approve match', async ()=>{
+    RELO_TAB = 'timeline';
+    const res = await Data.assignAgent(relId, agentId);
+    if(!res || res.ok===false){ toast('Not saved','We could not save that approval. Please try again.','err'); return; }
     toast('Agent match approved', `${a.name} will be introduced to ${r.emp}.`, 'ok');
   });
 }
@@ -2691,11 +2770,12 @@ function modalComment(relId){
     <div class="modal-f"><button class="btn btn-outline btn-sm" onclick="closeModal()">Cancel</button>
     <button class="btn btn-navy btn-sm" onclick="sendMatchComment('${relId}')">Send comment</button></div>`);
 }
-function sendMatchComment(relId){
+async function sendMatchComment(relId){
   const v = (document.getElementById('cm-note').value||'').trim();
   if(!v){ toast('Nothing to send','Write a brief comment first.','err'); return; }
-  S.activity.unshift({id:'a-x'+Date.now(),ts:'2026-06-11 '+new Date().toTimeString().slice(0,5),rel:relId,who:(ME?ME.name:'Arrival'),kind:'employer',text:'Comment for coordinator: '+v});
-  save(); closeModal(); toast('Comment sent','Your coordinator has been notified.','ok');
+  const r = await Data.addMilestone(relId, 'Comment for coordinator', v, true);
+  if(!r || r.ok===false){ toast('Not sent','That comment was not sent. Please try again.','err'); return; }
+  closeModal(); toast('Comment sent','Your coordinator has been notified.','ok');
 }
 function modalCompare(relId){
   const cands = S.candidates[relId]||[];
@@ -2764,19 +2844,31 @@ function modalAddTask(relId){
     <div class="modal-b">
       <div class="field"><label>Task <span class="req">*</span></label><input class="in" id="nt-title" placeholder="e.g., Confirm temporary housing dates"></div>
       <div class="grid g3" style="gap:0 14px">
-        <div class="field"><label>Due date</label><input class="in" id="nt-due" type="date" value="2026-06-18"></div>
+        <div class="field"><label>Due date</label><input class="in" id="nt-due" type="date" value="${new Date(Date.now()+7*864e5).toISOString().slice(0,10)}"></div>
         <div class="field"><label>Priority</label><select class="in" id="nt-pri"><option>High</option><option selected>Medium</option><option>Low</option></select></div>
-        <div class="field"><label>Assigned to</label><select class="in" id="nt-own">${(S.profiles||[]).map(u=>`<option>${esc(u.name)}</option>`).join('')}</select></div>
+        <div class="field"><label>Assigned to</label><select class="in" id="nt-own">${(S.profiles||[]).map(u=>`<option value="${esc(u.id)}">${esc(u.name)}</option>`).join('')}</select></div>
       </div>
     </div>
     <div class="modal-f"><button class="btn btn-outline btn-sm" onclick="closeModal()">Cancel</button>
-    <button class="btn btn-navy btn-sm" onclick="addTask('${relId||''}')">Add task</button></div>`);
+    <button class="btn btn-navy btn-sm" id="nt-go" onclick="addTask('${relId||''}')">Add task</button></div>`);
 }
-function addTask(relId){
+async function addTask(relId){
   const title = document.getElementById('nt-title').value.trim();
   if(!title){ document.getElementById('nt-title').classList.add('err'); return; }
-  S.tasks.unshift({id:'t-x'+Date.now(),title,rel:relId||null,due:document.getElementById('nt-due').value||'2026-06-18',pri:document.getElementById('nt-pri').value,owner:document.getElementById('nt-own').value,done:false,kind:'general'});
-  save(); closeModal(); TASK_VIEW='open'; route();
+  const btn = document.getElementById('nt-go');
+  if(btn){ btn.disabled = true; btn.innerHTML = '<span class="spin"></span> Adding…'; }
+  const r = await Data.createTask({
+    title, rel: relId||null,
+    due: document.getElementById('nt-due').value || null,
+    pri: document.getElementById('nt-pri').value,
+    owner: document.getElementById('nt-own').value,
+  });
+  if(!r.ok){
+    if(btn){ btn.disabled = false; btn.textContent = 'Add task'; }
+    toast('Not saved', r.message || 'That task was not created.', 'err');
+    return;
+  }
+  closeModal(); TASK_VIEW='open';
   toast('Task added', title, 'ok');
 }
 
@@ -2852,7 +2944,7 @@ function doUpload(relId){
   S.docs.unshift({id:'d-x'+Date.now(),name:name.includes('.')?name:name+'.pdf',cat:document.getElementById('up-cat').value,rel,emp:r?r.emp:null,date:new Date().toISOString().slice(0,10),by:(ME?ME.name:'Arrival'),type:'PDF',size:(120+Math.floor(Math.random()*600))+' KB'});
   if(rel){ S.activity.unshift({id:'a-x'+Date.now(),ts:'2026-06-11 '+new Date().toTimeString().slice(0,5),rel,who:(ME?ME.name:'Arrival'),kind:'doc',text:`Document uploaded: ${name}`});
     const t = S.tasks.find(t=>t.rel===rel && t.kind==='doc' && !t.done && /upload/i.test(t.title)); if(t) t.done = true; }
-  save(); closeModal(); route();
+  closeModal(); route();
   toast('Document uploaded', name + ' (prototype)', 'ok');
 }
 
@@ -2864,10 +2956,10 @@ function reloMessages(r){
     <button class="btn btn-navy btn-sm" style="margin-top:14px" onclick="startThread('${r.id}')">${ic('plus','ic-sm')} New message</button></div>`;
   return threadView(th, true);
 }
-function startThread(relId){
-  const r = relById(relId);
-  S.threads.unshift({id:'th-x'+Date.now(),rel:relId,subject:'Question, '+r.emp,unread:false,msgs:[]});
-  save(); route();
+async function startThread(relId){
+  const r = relById(relId); if(!r) return;
+  const res = await Data.createThread(relId, 'Question, '+r.emp);
+  if(!res || res.ok===false){ toast('Not started', (res && res.message) || 'That conversation could not be started.', 'err'); return; }
 }
 function threadView(th, embedded){
   return `<div class="card" style="display:flex;flex-direction:column;max-height:640px">
@@ -3519,14 +3611,14 @@ function addMember(){
   const email = document.getElementById('tm-email').value.trim();
   if(!name||!email){ toast('Missing details','Name and email are required.','err'); return; }
   teamList().push({id:'u-x'+Date.now(),name,role:document.getElementById('tm-role').value.trim()||'Team member',title:document.getElementById('tm-access').value,email,init:initials(name)||name.slice(0,2).toUpperCase()});
-  save(); closeModal(); route();
+  closeModal(); route();
   toast('Invitation sent', name + ' has been invited to the portal. (Prototype)', 'ok');
 }
 function removeMember(id){
   const u = teamList().find(x=>x.id===id); if(!u) return;
   confirmModal('Remove team member?', `<b>${esc(u.name)}</b> will lose access to this portal. This only affects the prototype demo data.`, 'Remove access', ()=>{
     S.team = teamList().filter(x=>x.id!==id);
-    save(); route(); toast('Access removed', u.name + ' no longer has portal access.', 'ok');
+    route(); toast('Access removed', u.name + ' no longer has portal access.', 'ok');
   }, true);
 }
 
@@ -3561,7 +3653,6 @@ function pgMessages(){
 }
 function openThread(id){
   const th = S.threads.find(t=>t.id===id); if(!th) return;
-  th.unread = false; save();
   nav('/corporate/messages/'+id);
 }
 function modalNewThread(){
@@ -3575,14 +3666,14 @@ function modalNewThread(){
     <div class="modal-f"><button class="btn btn-outline btn-sm" onclick="closeModal()">Cancel</button>
     <button class="btn btn-navy btn-sm" onclick="createThread()">Start conversation</button></div>`);
 }
-function createThread(){
+async function createThread(){
   const subj = document.getElementById('nt-subj').value.trim();
   if(!subj){ toast('Subject needed','Give the conversation a subject.','err'); return; }
   const rel = document.getElementById('nt-rel').value || null;
-  const id = 'th-x'+Date.now();
-  S.threads.unshift({id,rel,subject:subj,unread:false,msgs:[]});
-  save(); closeModal();
-  nav('/corporate/messages/'+id);
+  const res = await Data.createThread(rel, subj);
+  if(!res || res.ok===false){ toast('Not sent', (res && res.message) || 'That conversation could not be started.', 'err'); return; }
+  closeModal();
+  nav('/corporate/messages/'+res.id);
 }
 function pgThread(t){
   return `
@@ -3594,7 +3685,7 @@ function pgThread(t){
    SETTINGS
    ========================================================= */
 function prefs(){ if(!S.prefs) S.prefs = {match:true,closing:true,risk:true,weekly:true,survey:false}; return S.prefs; }
-function setPref(k, v){ prefs()[k]=v; save(); toast('Preference saved','Notification settings updated.','ok'); }
+function setPref(k, v){ prefs()[k]=v; toast('Preference saved','Notification settings updated.','ok'); }
 function pgSettings(){
   const p = prefs();
   const me = ccUser();
@@ -4152,11 +4243,12 @@ function ccConvert(id){
   const sel = document.getElementById('cv-tier');
   sel.addEventListener('change', ()=>{ document.getElementById('cv-desc').textContent = TIER_DESC[sel.value]; });
 }
-function ccConvertGo(id){
+async function ccConvertGo(id){
   const c = companyById(id); if(!c) return;
-  c.stage = 'Customer'; c.tier = document.getElementById('cv-tier').value; c.since = new Date().toISOString().slice(0,10);
-  c.next = 'Kickoff scheduled, welcome packet sent';
-  save(); closeModal(); toast('Customer activated', c.name+' is now a '+c.tier+' customer.', 'ok'); nav('/command-center/companies/'+id);
+  const tier = document.getElementById('cv-tier').value;
+  const r = await Data.convertCompanyToCustomer(id, tier);
+  if(!r || r.ok===false){ toast('Not saved', (r && r.message) || 'That company was not activated. Please try again.', 'err'); return; }
+  closeModal(); toast('Customer activated', c.name+' is now a '+tier+' customer.', 'ok'); nav('/command-center/companies/'+id);
 }
 
 /* ---------- companies ---------- */
@@ -4307,9 +4399,10 @@ function ccCurate(relId){
 }
 function ccAssign(relId, agentId){
   const r = anyRel(relId), a = agentById(agentId); if(!r||!a) return;
-  confirmModal('Assign agent?', `<b>${esc(a.name)}</b> will be assigned to <b>${esc(r.emp)}</b> and the managed introduction begins.`, 'Assign agent', ()=>{
-    r.agentId = agentId; r.status='Agent Assigned'; r.progress=Math.max(r.progress,42); delete S.candidates[relId];
-    save(); toast('Agent assigned', a.name+' → '+r.emp, 'ok'); route();
+  confirmModal('Assign agent?', `<b>${esc(a.name)}</b> will be assigned to <b>${esc(r.emp)}</b> and the managed introduction begins.`, 'Assign agent', async ()=>{
+    const res = await Data.assignAgent(relId, agentId);
+    if(!res || res.ok===false){ toast('Not assigned','We could not save that assignment. Please try again.','err'); return; }
+    toast('Agent assigned', a.name+' → '+r.emp, 'ok');
   });
 }
 
@@ -4584,7 +4677,6 @@ function ccMessages(){
   </div>`;
 }
 function ccThread(t){
-  t.unread = false; save();
   const me = ccUser();
   return `<a class="linklike tiny" href="/command-center/messages" data-nav>${ic('arrL','ic-sm')} All messages</a>
   <div class="card card-pad" style="margin-top:10px">
@@ -4600,12 +4692,18 @@ function ccThread(t){
     </div>
   </div>`;
 }
-function ccSend(tid){
+async function ccSend(tid){
   const t=(S.threads||[]).find(x=>x.id===tid); const inp=document.getElementById('cc-msg');
   if(!t||!inp||!inp.value.trim()) return;
-  const me = ccUser();
-  t.msgs.push({who:me.name, role:'Arrival '+me.role, ts:new Date().toISOString().slice(0,10)+' '+new Date().toTimeString().slice(0,5), text:inp.value.trim()});
-  save(); route(); toast('Reply sent','Posted to the thread.','ok');
+  const text = inp.value.trim();
+  inp.disabled = true;
+  const r = await Data.postMessage(tid, text);
+  inp.disabled = false;
+  if(r && r.ok===false){
+    toast('Not sent','That message was not delivered. Please try again.','err');
+    return;
+  }
+  toast('Reply sent','Posted to the thread.','ok');
 }
 
 /* ---------- team & settings ---------- */
@@ -4932,21 +5030,13 @@ function agUpdateModal(oppId){
     <button class="btn btn-gold btn-sm" onclick="agUpdateGo('${oppId}')">Post update</button></div>`);
 }
 const MS_STATUS = {'Home search started':'Home Search','Under contract':'Under Contract','Closing scheduled':'Closing Scheduled','Closed':'Completed'};
-function agUpdateGo(oppId){
+async function agUpdateGo(oppId){
   const o = oppById(oppId); const r = anyRel(o.relId); if(!r) return;
   const ms = document.getElementById('au-ms').value;
   const note = document.getElementById('au-note').value.trim();
-  const today = new Date().toISOString().slice(0,10);
-  const ts = today + ' ' + new Date().toTimeString().slice(0,5);
-  r.notes = ms + (note ? ', ' + note : '') + ' (agent update)';
-  r.progress = Math.min(100, r.progress + 5); r.last = today;
-  if(MS_STATUS[ms]){ r.status = MS_STATUS[ms]; if(ms==='Closed') r.progress = 100; }
-  const th = (S.threads||[]).find(t=>t.rel===o.relId);
-  if(th) th.msgs.push({who:agMe().name, role:'Agent', ts, text:'Milestone: '+ms+(note?', '+note:'')});
-  // real-time visibility to Arrival: activity log + notification
-  S.activity = S.activity||[]; S.activity.unshift({id:'a-x'+Date.now(),ts,rel:o.relId,who:agMe().name,kind:'status',text:`Milestone update, ${ms} for ${r.emp} (${o.relId}).`});
-  S.notifications = S.notifications||[]; S.notifications.unshift({id:'n-x'+Date.now(),ts,kind:'status',text:`${ms}, ${r.emp} (${o.relId})`,rel:o.relId,read:false});
-  save(); closeModal(); toast('Update posted', ms+', Arrival is notified and the employer\u2019s tracking view is updated.', 'ok'); route();
+  const res = await Data.postAgentUpdate(o.relId, ms, note);
+  if(!res || res.ok===false){ toast('Not posted', (res && res.message) || 'That update was not saved. Please try again.', 'err'); return; }
+  closeModal(); toast('Update posted', ms+', Arrival is notified and the employer\u2019s tracking view is updated.', 'ok');
 }
 
 /* ---------- messages ---------- */
@@ -4959,7 +5049,6 @@ function agMessages(){
   </a>`).join('')}</div>`;
 }
 function agThread(t){
-  t.unread=false; save();
   const me = agMe();
   return `<a class="linklike tiny" href="/agent/messages" data-nav>${ic('arrL','ic-sm')} All messages</a>
   <div class="card card-pad" style="margin-top:10px">
@@ -4975,11 +5064,18 @@ function agThread(t){
     </div>
   </div>`;
 }
-function agSend(tid){
+async function agSend(tid){
   const t=(S.threads||[]).find(x=>x.id===tid); const inp=document.getElementById('ag-msg');
   if(!t||!inp||!inp.value.trim()) return;
-  t.msgs.push({who:agMe().name, role:'Agent', ts:new Date().toISOString().slice(0,10)+' '+new Date().toTimeString().slice(0,5), text:inp.value.trim()});
-  save(); route(); toast('Reply sent','Your coordinator will be notified.','ok');
+  const text = inp.value.trim();
+  inp.disabled = true;
+  const r = await Data.postMessage(tid, text);
+  inp.disabled = false;
+  if(r && r.ok===false){
+    toast('Not sent','That message was not delivered. Please try again.','err');
+    return;
+  }
+  toast('Reply sent','Your coordinator will be notified.','ok');
 }
 
 /* ---------- profile builder ---------- */
@@ -5021,11 +5117,11 @@ function agProfileSave(){
   pr.headline = document.getElementById('pf-headline').value;
   pr.funFact = document.getElementById('pf-fun').value;
   pr.serviceNote = document.getElementById('pf-svc').value;
-  save(); toast('Profile saved','Your updated profile is live for new opportunities.','ok'); route();
+  toast('Profile saved','Your updated profile is live for new opportunities.','ok'); route();
 }
 function agProfileVideo(){
   (S.agentProfile||(S.agentProfile={})).video = true;
-  save(); toast('Video uploaded','Your 60-second intro will appear on employee selection pages.','ok'); route();
+  toast('Video uploaded','Your 60-second intro will appear on employee selection pages.','ok'); route();
 }
 
 /* ---------- coverage ---------- */
@@ -7497,7 +7593,7 @@ function mrApprove(id){
   confirmModal('Approve this report?', `Approving freezes <b>version ${(r.version||0)+1}</b> as an immutable snapshot and unlocks delivery to ${esc(r.inputs.recipient)}.<br><br><span class="tiny" style="color:var(--gold-deep)">Score model ${MR_SCORE_MODEL.name} v${MR_SCORE_MODEL.version} is a DRAFT, production approval requires Arrival-approved weights.</span>`, 'Approve', ()=>{
     r.status='approved'; r.version=(r.version||0)+1; r.approvedBy=ccUser().name; r.approvedAt=new Date().toISOString().slice(0,10);
     mrLog(r,'Version '+r.version+' approved. Draft score model acknowledged.');
-    save(); toast('Report approved','Version '+r.version+' frozen, ready to send.','ok'); route();
+    toast('Report approved','Version '+r.version+' frozen, ready to send.','ok'); route();
   });
 }
 function mrSend(id){
@@ -7508,26 +7604,26 @@ function mrSend(id){
     const ts=new Date().toISOString().slice(0,16).replace('T',' ');
     r.delivery=r.delivery||[]; r.delivery.unshift({ts, to:r.inputs.recipient, status:'Delivered (simulated)', id:'dlv-sim-'+Math.random().toString(36).slice(2,7)});
     r.status='sent'; r.sentAt=ts; mrLog(r,'Report sent (simulated) to '+r.inputs.recipient+'.');
-    save(); toast('Sent (simulated)','Secure link + PDF delivered to '+r.inputs.recipient+'.','ok'); route();
+    toast('Sent (simulated)','Secure link + PDF delivered to '+r.inputs.recipient+'.','ok'); route();
   });
 }
 function mrRevoke(id){
   const r=mrById(id); if(!r) return;
   confirmModal('Revoke secure link?','The recipient link stops working immediately. You can issue a new link afterwards.','Revoke', ()=>{
-    r.revoked=true; mrLog(r,'Secure link revoked.'); save(); toast('Access revoked','The report link no longer resolves.','ok'); route();
+    r.revoked=true; mrLog(r,'Secure link revoked.'); toast('Access revoked','The report link no longer resolves.','ok'); route();
   }, true);
 }
 function mrReissue(id){
   const r=mrById(id); if(!r) return;
   r.token=mrNewToken(); r.revoked=false; mrLog(r,'New secure link issued (old token invalidated).');
-  save(); toast('New link issued','Copy the new secure link to share it.','ok'); route();
+  toast('New link issued','Copy the new secure link to share it.','ok'); route();
 }
 function mrRegen(id){
   const r=mrById(id); if(!r||!r.scores) return;
   if((r.aiRegens||0)>=MR_CAPS.ai){ toast('AI call cap reached','This report has used its '+MR_CAPS.ai+'-call narrative budget.','err'); return; }
   r.aiRegens=(r.aiRegens||0)+1; if(r.job) r.job.calls.ai=Math.min(MR_CAPS.ai, r.job.calls.ai+1);
   r.narr=mrNarratives(r); mrLog(r,'Narrative regenerated ('+r.aiRegens+'/'+MR_CAPS.ai+'), grounding validator passed.');
-  save(); toast('Narrative regenerated','Grounded against approved data points.','ok'); route();
+  toast('Narrative regenerated','Grounded against approved data points.','ok'); route();
 }
 function mrOverride(id, idx){
   const r=mrById(id); const p=r&&r.dataPoints[idx]; if(!p) return;
@@ -7549,7 +7645,7 @@ function mrOverrideGo(id, idx){
   r.overrides=r.overrides||[]; r.overrides.push({key:p.key, orig:p.value, val, reason:why, user:ccUser().name, ts:new Date().toISOString().slice(0,16).replace('T',' ')});
   p.value=isNaN(parseFloat(val))?val:parseFloat(val); p.state='overridden';
   r.confidence=mrConfidence(r); mrLog(r,'Override on '+p.key+', "'+why+'"');
-  save(); closeModal(); toast('Override applied','Logged with reason; confidence recalculated.','ok'); route();
+  closeModal(); toast('Override applied','Logged with reason; confidence recalculated.','ok'); route();
 }
 
 /* ---- integrations status ---- */
