@@ -1860,29 +1860,30 @@ function pageHome(){
 
 function heroVisual(){
   return `<div style="position:relative">
-    <div class="card" style="background:linear-gradient(150deg,var(--midnight),var(--navy));border-color:rgba(255,255,255,.14);box-shadow:var(--shadow-lg);padding:26px 22px;border-radius:18px;position:relative;overflow:hidden">
-      <div class="flex gap8" style="font-size:12px;font-weight:700;color:rgba(255,255,255,.85);margin-bottom:20px;max-width:130px">${logoMark(20,true)} Every relocation, mapped</div>
-      <svg viewBox="0 0 300 260" style="width:100%;max-width:280px;display:block;margin:0 auto">
-        <circle cx="150" cy="130" r="118" fill="none" stroke="rgba(255,255,255,.16)" stroke-width="1.4"/>
-        <ellipse cx="150" cy="130" rx="118" ry="40" fill="none" stroke="rgba(255,255,255,.12)" stroke-width="1"/>
-        <ellipse cx="150" cy="130" rx="118" ry="80" fill="none" stroke="rgba(255,255,255,.12)" stroke-width="1"/>
-        <ellipse cx="150" cy="130" rx="40" ry="118" fill="none" stroke="rgba(255,255,255,.12)" stroke-width="1"/>
-        <ellipse cx="150" cy="130" rx="80" ry="118" fill="none" stroke="rgba(255,255,255,.12)" stroke-width="1"/>
-        <path d="M76,168 Q150,68 224,102" fill="none" stroke="var(--gold)" stroke-width="2.2" stroke-dasharray="1 7" stroke-linecap="round"/>
-        <circle cx="76" cy="168" r="12" fill="none" stroke="var(--gold)" stroke-width="1.4" opacity=".5"/>
-        <circle cx="76" cy="168" r="6" fill="var(--gold)"/>
-        <circle cx="224" cy="102" r="12" fill="none" stroke="#7FD1BC" stroke-width="1.4" opacity=".5"/>
-        <circle cx="224" cy="102" r="6" fill="#7FD1BC"/>
-      </svg>
-      <div style="position:absolute;top:20px;right:20px;background:#fff;border-radius:13px;padding:11px 13px;box-shadow:var(--shadow-lg);display:flex;align-items:center;gap:10px;max-width:190px">
-        <span class="avatar gold" style="flex:none">${ic('user','ic-sm')}</span>
-        <div><b style="font-size:12px;color:var(--navy);display:block">Your coordinator</b>
-        <span class="tiny muted">One point of contact, start to close</span></div>
+    <div class="card" style="background:linear-gradient(150deg,var(--midnight),var(--navy));border-color:rgba(255,255,255,.14);box-shadow:var(--shadow-lg);padding:20px;border-radius:18px">
+      <div class="flex between" style="margin-bottom:14px">
+        <span class="flex gap8" style="font-size:12px;font-weight:700;color:rgba(255,255,255,.85)">${logoMark(20,true)} Corporate Command Center</span>
+        <span class="badge b-teal" style="background:rgba(46,125,107,.25);color:#7FD1BC">Live tracking</span>
+      </div>
+      <div class="grid g2" style="gap:10px">
+        ${[['Active relocations','11'],['Closed this year','23'],['Avg. days to match','4.2'],['Satisfaction','4.8 / 5']].map(([l,v])=>`
+        <div style="background:rgba(11,27,54,.55);border:1px solid rgba(255,255,255,.08);border-radius:12px;padding:13px 15px">
+          <div class="tiny" style="color:rgba(255,255,255,.5)">${l}</div>
+          <b style="font-size:21px;color:var(--gold)" class="num">${v}</b>
+        </div>`).join('')}
+      </div>
+      <div style="background:rgba(11,27,54,.55);border:1px solid rgba(255,255,255,.08);border-radius:12px;padding:14px 15px;margin-top:10px">
+        ${[['Dr. Sarah Johnson','Atlanta, GA','Under Contract','82'],['Michael Chen','Nashville, TN','Home Search','58'],['Priya Patel','Boston, MA','Matching','24']].map(([n,d,s,p])=>`
+        <div class="flex between" style="padding:7px 0;border-bottom:1px solid rgba(255,255,255,.06)">
+          <div><b style="font-size:12.5px;color:#fff">${n}</b><div class="tiny" style="color:rgba(255,255,255,.45)">${d} · ${s}</div></div>
+          <div class="pbar gold" style="width:74px"><i style="width:${p}%"></i></div>
+        </div>`).join('')}
+        <div class="tiny" style="color:rgba(255,255,255,.4);margin-top:9px;text-align:right">Preview, demonstration data</div>
       </div>
     </div>
     <div style="position:absolute;-webkit-backdrop-filter:blur(8px);backdrop-filter:blur(8px);bottom:-18px;left:-22px;background:rgba(44,90,160,.92);color:var(--midnight);border-radius:13px;padding:12px 18px;box-shadow:var(--shadow-lg)">
-      <b style="font-size:13px">Vetted agents nationwide</b>
-      <div class="tiny" style="opacity:.75">Matched to the destination market</div>
+      <b style="font-size:13px">Agent matched in 3 days</b>
+      <div class="tiny" style="opacity:.75">Introduction completed ✓</div>
     </div>
   </div>`;
 }
