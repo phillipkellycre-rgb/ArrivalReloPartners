@@ -1,0 +1,13 @@
+{
+  "name": "arrival-relocation-partners",
+  "private": true,
+  "version": "1.0.0",
+  "description": "Arrival Relocation Partners — marketing site and portals (single-file SPA)",
+  "scripts": {
+    "start": "serve -s .",
+    "demo": "serve -s demo"
+  },
+  "devDependencies": {
+    "serve": "^14.2.1"
+  }
+}

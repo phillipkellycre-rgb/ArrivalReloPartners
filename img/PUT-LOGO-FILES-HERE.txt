@@ -1,0 +1,2 @@
+index.html references logo.png, logo-light.png, mark.png, mark-light.png (lines 433 and 444).
+Copy them from your current deployment.
