@@ -584,6 +584,13 @@ function _toDate(v){
   return isNaN(d) ? null : d;
 }
 function agentById(id){ return (S.agents||[]).find(a=>a.id===id); }
+/* Candidate cards render a score, a few reasons, and a recent-activity line.
+   Those never existed as agent_candidates columns (only rank and rationale
+   do), so they're derived here, once, rather than expected to already be on
+   the candidate object. */
+function candScore(rank){ return Math.max(60, 95-((rank||1)-1)*7); }
+function candWhy(c){ return c.rationale ? c.rationale.split('; ') : ['Curated match']; }
+function candRecent(a){ return (a&&a.done||0)+' managed relocations completed.'; }
 /* Company name comes from the loaded roster via company_id. Matching on a name
    string broke the moment a company was renamed. */
 /* The employer the signed-in user belongs to. The corporate portal hardcoded
@@ -806,6 +813,13 @@ const uiStage  = db => { const i = ['intake','preferences_pending','matching','a
   'under_contract','closing_scheduled','completed','on_hold'].indexOf(db); return i<0 ? 'Intake' : STAGES[i]; };
 const uiMode   = db => ({buyer:'Buyer', renter:'Renter', buyer_seller:'Buyer & Seller', seller:'Seller'}[db] || null);
 const dbMode   = ui => ({'Buyer':'buyer','Renter':'renter','Buyer & Seller':'buyer_seller','Seller':'seller'}[ui] || null);
+/* The company pipeline's own stage vocabulary, shared between loading (map db
+   value -> UI label) and writing (map UI label back -> db value), and reused
+   to build the pipeline board's columns. One list, so the board can never
+   drift out of step with what a loaded company's stage actually is. */
+const STAGE_LABEL = {prospect:'Prospect', in_discussion:'In Discussion', won_onboarding:'Won. Onboarding',
+                     customer:'Customer', past:'Past', lost:'Lost'};
+const dbCompanyStage = ui => Object.keys(STAGE_LABEL).find(k=>STAGE_LABEL[k]===ui) || 'prospect';
 /* Risk is nullable on purpose. Null means no coordinator has assessed it, which
    is NOT the same as low, and the UI must not render it as a rating. */
 const uiRisk   = db => db ? db[0].toUpperCase()+db.slice(1) : null;
@@ -873,8 +887,6 @@ const Data = {
     const refOf = new Map((rel.data||[]).map(r=>[r.id, r.ref]));
 
     S.agents     = (ags.data||[]).map(mapAgent);
-    const STAGE_LABEL = {prospect:'Prospect', in_discussion:'In Discussion', won_onboarding:'Won. Onboarding',
-                         customer:'Customer', past:'Past', lost:'Lost'};
     S.companies  = (cos.data||[]).map(x=>({id:x.id, name:x.name, industry:x.industry, hq:x.hq_city,
                      active:x.is_active, stage:STAGE_LABEL[x.stage]||'Prospect', tier:x.tier,
                      value:x.annual_value, est:x.est_volume||'—', since:x.customer_since,
@@ -1065,6 +1077,7 @@ const Data = {
      so the screen can never show a change that was not persisted. */
   async setRelocationStatus(ref, uiStatus){
     const r = relById(ref); if(!r) return {ok:false};
+    if(DEMO){ r.status = uiStatus; return Data.refresh(); }
     const c = sb();
     const { error } = await c.from('relocations')
       .update({ status: dbStage(uiStatus), last_activity_at: new Date().toISOString() })
@@ -1075,6 +1088,7 @@ const Data = {
   },
   async setRelocationProgress(ref, pct){
     const r = relById(ref); if(!r) return {ok:false};
+    if(DEMO){ r.progress = Math.max(0,Math.min(100,Math.round(pct))); return Data.refresh(); }
     const { error } = await sb().from('relocations')
       .update({ progress: Math.max(0,Math.min(100,Math.round(pct))), last_activity_at:new Date().toISOString() })
       .eq('id', r.uuid);
@@ -1083,8 +1097,14 @@ const Data = {
   },
   async assignAgent(ref, agentId){
     const r = relById(ref); if(!r) return {ok:false};
+    if(DEMO){
+      r.agentId = agentId; r.status = 'Agent Assigned'; r.progress = Math.max(r.progress||0, 42);
+      delete S.candidates[ref];
+      return Data.refresh();
+    }
     const { error } = await sb().from('relocations')
-      .update({ agent_id: agentId, status:'agent_assigned', last_activity_at:new Date().toISOString() })
+      .update({ agent_id: agentId, status:'agent_assigned', progress: Math.max(r.progress||0, 42),
+                last_activity_at:new Date().toISOString() })
       .eq('id', r.uuid);
     if(error){ console.error('[data] assign', error); return {ok:false, error}; }
     await sb().from('milestones').insert({ relocation_id:r.uuid, label:'Agent assigned', created_by: ME.id });
@@ -1092,32 +1112,107 @@ const Data = {
   },
   async addMilestone(ref, label, note, employerVisible){
     const r = relById(ref); if(!r) return {ok:false};
+    if(DEMO){
+      S.activity = S.activity||[];
+      S.activity.unshift({id:'demo-m'+Date.now(), ts:new Date().toISOString().slice(0,10)+' '+new Date().toTimeString().slice(0,5),
+        rel:ref, who:ME.name, kind:'milestone', text:label+(note?' — '+note:''), employerVisible:employerVisible!==false});
+      return Data.refresh();
+    }
     const { error } = await sb().from('milestones').insert({
       relocation_id:r.uuid, label, note:note||null,
       employer_visible: employerVisible!==false, created_by: ME.id });
     if(error){ console.error('[data] milestone', error); return {ok:false, error}; }
     return Data.refresh();
   },
+  /* One write for the whole "agent posts a milestone" action: status, progress,
+     the milestone itself, and (if a conversation already exists) a note in the
+     thread — all in one refresh rather than four. */
+  async postAgentUpdate(ref, msLabel, note){
+    const r = relById(ref); if(!r) return {ok:false};
+    if(DEMO){
+      r.progress = msLabel==='Closed' ? 100 : Math.min(100, (r.progress||0)+5);
+      if(MS_STATUS[msLabel]) r.status = MS_STATUS[msLabel];
+      S.activity = S.activity||[];
+      S.activity.unshift({id:'demo-m'+Date.now(), ts:new Date().toISOString().slice(0,10)+' '+new Date().toTimeString().slice(0,5),
+        rel:ref, who:ME.name, kind:'milestone', text:msLabel+(note?' — '+note:''), employerVisible:true});
+      const th = (S.threads||[]).find(t=>t.rel===ref);
+      if(th){ th.msgs = th.msgs||[]; th.msgs.push({who:ME.name, role:'Agent', senderId:ME.id,
+        ts:new Date().toISOString().slice(0,10)+' '+new Date().toTimeString().slice(0,5), text:'Milestone: '+msLabel+(note?', '+note:'')}); }
+      return Data.refresh();
+    }
+    const c = sb(); if(!c || !ME) return {ok:false};
+    const patch = { last_activity_at: new Date().toISOString() };
+    if(msLabel==='Closed') patch.progress = 100;
+    else patch.progress = Math.min(100, (r.progress||0) + 5);
+    if(MS_STATUS[msLabel]) patch.status = dbStage(MS_STATUS[msLabel]);
+    const { error } = await c.from('relocations').update(patch).eq('id', r.uuid);
+    if(error){ console.error('[data] postAgentUpdate', error); return {ok:false, error, message:'We could not save that update. Please try again.'}; }
+    await c.from('milestones').insert({ relocation_id:r.uuid, label:msLabel, note:note||null, employer_visible:true, created_by:ME.id });
+    const th = (S.threads||[]).find(t=>t.rel===ref);
+    if(th) await c.from('messages').insert({ thread_id:th.id, sender_id:ME.id, body:'Milestone: '+msLabel+(note?', '+note:'') });
+    return Data.refresh();
+  },
   async postMessage(threadId, body){
+    if(DEMO){
+      const th = (S.threads||[]).find(t=>t.id===threadId); if(!th) return {ok:false};
+      const role = ({owner:'Arrival', coordinator:'Arrival', agent:'Agent', company:'Employer'})[ME.appRole] || 'Arrival';
+      th.msgs = th.msgs||[];
+      th.msgs.push({who:ME.name, role, senderId:ME.id, ts:new Date().toISOString().slice(0,10)+' '+new Date().toTimeString().slice(0,5), text:body});
+      return Data.refresh();
+    }
     const { error } = await sb().from('messages').insert({ thread_id:threadId, sender_id:ME.id, body });
     if(error){ console.error('[data] message', error); return {ok:false, error}; }
     await sb().from('message_threads').update({ last_message_at:new Date().toISOString() }).eq('id', threadId);
     return Data.refresh();
   },
   async toggleTask(id, done){
+    if(DEMO){
+      const t = (S.tasks||[]).find(x=>x.id===id); if(!t) return {ok:false};
+      t.done = done;
+      return Data.refresh();
+    }
     const { error } = await sb().from('tasks')
       .update({ completed_at: done ? new Date().toISOString() : null }).eq('id', id);
     if(error){ console.error('[data] task', error); return {ok:false, error}; }
     return Data.refresh();
   },
   async markNotificationRead(id){
+    if(DEMO){
+      const n = (S.notifications||[]).find(x=>x.id===id); if(n) n.read = true;
+      return Data.refresh();
+    }
     await sb().from('notifications').update({ read_at:new Date().toISOString() }).eq('id', id);
+    return Data.refresh();
+  },
+  async markAllNotificationsRead(){
+    if(DEMO){ (S.notifications||[]).forEach(n=>n.read=true); return Data.refresh(); }
+    const c = sb(); if(!c || !ME) return {ok:false};
+    const { error } = await c.from('notifications').update({ read_at:new Date().toISOString() }).is('read_at', null);
+    if(error){ console.error('[data] markAllNotifications', error); return {ok:false, error}; }
     return Data.refresh();
   },
   /* Creates the relocation, then the opening milestone. If the insert fails
      nothing is written and the caller is told: the referral must never appear
      to have been accepted when it was not. */
   async createRelocation(fields){
+    if(DEMO){
+      const ref = fields.ref || ('ARP-' + Date.now().toString().slice(-6));
+      const today = new Date().toISOString().slice(0,10);
+      const r = {uuid:'demo-r'+Date.now(), id:ref, emp:fields.emp, email:fields.email||null, phone:fields.phone||null,
+        role:fields.role||null, dept:fields.dept||null, origin:fields.origin||null, dest:fields.dest||null,
+        type:fields.type||'Transfer', mode:fields.mode||'Buyer', status:'Intake', risk:null, agentId:null,
+        companyId: ME.appRole==='company' ? ME.companyId : (fields.companyId||null), target:fields.target||null,
+        submitted:today, last:today, progress:0, office:null, budget:null, household:null, schools:null,
+        commute:null, special:null, salary:null, beds:null, baths:null, pets:null, hasPrivate:true};
+      S.relocations = S.relocations||[]; S.relocations.unshift(r);
+      if(fields.notes){
+        S.activity = S.activity||[];
+        S.activity.unshift({id:'demo-m'+Date.now(), ts:today+' '+new Date().toTimeString().slice(0,5), rel:ref,
+          who:ME.name, kind:'milestone', text:'Referred by employer — '+fields.notes, employerVisible:true});
+      }
+      await Data.refresh();
+      return {ok:true, ref, id:r.uuid};
+    }
     const c = sb(); if(!c || !ME) return {ok:false};
     const ref = fields.ref || ('ARP-' + Date.now().toString().slice(-6));
     const row = {
@@ -1148,6 +1243,7 @@ const Data = {
   /* Passes the caller's access token so /api/invite can ask Supabase who is
      asking, rather than taking the browser's word for it. */
   async notifyInvite(email, role){
+    if(DEMO) return {ok:true};
     const c = sb(); if(!c) return {ok:false};
     const { data:{ session:s } = {} } = await c.auth.getSession();
     if(!s) return {ok:false, message:'Your session has expired.'};
@@ -1164,9 +1260,17 @@ const Data = {
 
   /* Create a customer company. Staff only, enforced by companies_staff_insert. */
   async createCompany(f){
-    const c = sb(); if(!c || !ME) return {ok:false};
     const name = String(f.name||'').trim();
     if(!name) return {ok:false, message:'A company name is required.'};
+    if(DEMO){
+      const co = {id:'demo-c'+Date.now(), name, industry:f.industry||null, hq:f.hq||null, active:true,
+        stage: f.stage || 'Prospect', tier: f.tier||null, value: f.value?Number(f.value):null,
+        est: f.est||'—', since:null, next: f.next||'—', notes: f.notes||'', owner:ME.id};
+      S.companies = S.companies||[]; S.companies.unshift(co);
+      await Data.refresh();
+      return {ok:true, id:co.id, name:co.name};
+    }
+    const c = sb(); if(!c || !ME) return {ok:false};
     const row = {
       name, industry: f.industry||null, hq_city: f.hq||null,
       stage: f.stage || 'prospect', tier: f.tier||null,
@@ -1185,14 +1289,65 @@ const Data = {
     return {ok:true, id:data.id, name:data.name};
   },
 
+  async moveCompanyStage(id, uiStage, note){
+    if(DEMO){
+      const co = companyById(id); if(!co) return {ok:false};
+      co.stage = uiStage; if(note) co.next = note;
+      return Data.refresh();
+    }
+    const c = sb(); if(!c || !ME) return {ok:false};
+    const row = { stage: dbCompanyStage(uiStage) };
+    if(note) row.next_step = note;
+    const { error } = await c.from('companies').update(row).eq('id', id);
+    if(error){
+      console.error('[data] moveCompanyStage', error);
+      return {ok:false, error, message: error.code==='42501'
+        ? 'Only staff can move a company’s stage.'
+        : 'We could not move that company. Please try again.'};
+    }
+    return Data.refresh();
+  },
+  async convertCompanyToCustomer(id, tier){
+    if(DEMO){
+      const co = companyById(id); if(!co) return {ok:false};
+      co.stage = 'Customer'; co.tier = tier; co.since = new Date().toISOString().slice(0,10);
+      co.next = 'Kickoff scheduled, welcome packet sent';
+      return Data.refresh();
+    }
+    const c = sb(); if(!c || !ME) return {ok:false};
+    const row = {
+      stage: 'customer', tier, customer_since: new Date().toISOString().slice(0,10),
+      next_step: 'Kickoff scheduled, welcome packet sent',
+    };
+    const { error } = await c.from('companies').update(row).eq('id', id);
+    if(error){
+      console.error('[data] convertCompany', error);
+      return {ok:false, error, message: error.code==='42501'
+        ? 'Only staff can activate a customer.'
+        : 'We could not activate that customer. Please try again.'};
+    }
+    await Data.refresh();
+    return {ok:true};
+  },
+
   /* Add an agent to the routing roster. The agent does NOT get portal access
      here: that is a separate invitation, so adding someone to the roster and
      granting them a login stay separate decisions. */
   async createAgent(f){
-    const c = sb(); if(!c || !ME) return {ok:false};
     const name = String(f.name||'').trim();
     if(!name) return {ok:false, message:'The agent\u2019s name is required.'};
     const list = v => String(v||'').split(',').map(x=>x.trim()).filter(Boolean);
+    if(DEMO){
+      const a = {id:'demo-a'+Date.now(), name, email:f.email||null, phone:f.phone||'\u2014', brokerage:f.brokerage||'\u2014',
+        market:f.market||'', yrs:f.yrs||'\u2014', done:f.done?parseInt(f.done,10):0, rating:'\u2014', resp:'\u2014',
+        langs:list(f.langs), specs:list(f.specs), bio:f.bio||'', license:f.license||null,
+        licenseState:f.licenseState||null, licenseExpires:f.licenseExpires||null, active:true,
+        _rating:0, _yrs:f.yrs?parseInt(f.yrs,10):0};
+      S.agents = S.agents||[]; S.agents.unshift(a);
+      await Data.refresh();
+      return {ok:true, id:a.id, name:a.name};
+    }
+    const c = sb(); if(!c || !ME) return {ok:false};
     const row = {
       full_name: name, email: f.email||null, phone: f.phone||null,
       brokerage: f.brokerage||null, market: f.market||null,
@@ -1218,7 +1373,87 @@ const Data = {
     return {ok:true, id:data.id, name:data.full_name};
   },
 
+  async respondOpportunity(id, status){
+    if(DEMO){
+      const o = (S.opportunities||[]).find(x=>x.id===id); if(!o) return {ok:false};
+      o.status = status; o.respondedAt = new Date().toISOString();
+      return Data.refresh();
+    }
+    const c = sb(); if(!c || !ME) return {ok:false};
+    const { error } = await c.from('opportunities')
+      .update({ status, responded_at:new Date().toISOString() }).eq('id', id);
+    if(error){ console.error('[data] respondOpportunity', error); return {ok:false, error, message:'We could not save your response. Please try again.'}; }
+    return Data.refresh();
+  },
+  /* Replaces the shortlist wholesale rather than diffing it: curation always
+     runs on the full pool of agents, so the previous three rows (if any) are
+     stale the moment this runs again. */
+  async curateCandidates(ref, picks){
+    const r = relById(ref); if(!r) return {ok:false};
+    if(DEMO){
+      S.candidates = S.candidates||{};
+      S.candidates[ref] = picks.map((p,i)=>({id:'demo-cd'+Date.now()+i, rel:ref, agentId:p.agentId, rank:i+1, rationale:p.rationale||null, selected:false}));
+      if(['Intake','Preferences Pending'].includes(r.status)){ r.status='Matching'; r.progress=Math.max(r.progress||0,22); }
+      return Data.refresh();
+    }
+    const c = sb(); if(!c || !ME) return {ok:false};
+    const { error: delErr } = await c.from('agent_candidates').delete().eq('relocation_id', r.uuid);
+    if(delErr){ console.error('[data] curate delete', delErr); return {ok:false, error:delErr, message:'We could not save the shortlist. Please try again.'}; }
+    const rows = picks.map((p,i)=>({ relocation_id:r.uuid, agent_id:p.agentId, rank:i+1, rationale:p.rationale||null }));
+    const { error } = await c.from('agent_candidates').insert(rows);
+    if(error){ console.error('[data] curate insert', error); return {ok:false, error, message:'We could not save the shortlist. Please try again.'}; }
+    if(['Intake','Preferences Pending'].includes(r.status)){
+      await c.from('relocations').update({ status:'matching', progress:Math.max(r.progress||0,22), last_activity_at:new Date().toISOString() }).eq('id', r.uuid);
+    }
+    return Data.refresh();
+  },
+  async createThread(ref, subject, audience){
+    if(DEMO){
+      const rel = ref ? relById(ref) : null;
+      const t = {id:'demo-th'+Date.now(), rel: rel?rel.id:null, subject, audience:audience||'all', unread:false, msgs:[]};
+      S.threads = S.threads||[]; S.threads.unshift(t);
+      await Data.refresh();
+      return {ok:true, id:t.id};
+    }
+    const c = sb(); if(!c || !ME) return {ok:false};
+    const r = ref ? relById(ref) : null;
+    const { data, error } = await c.from('message_threads')
+      .insert({ relocation_id: r ? r.uuid : null, subject, audience: audience||'all' })
+      .select('id').single();
+    if(error){
+      console.error('[data] createThread', error);
+      return {ok:false, error, message:'We could not start that conversation. Please try again.'};
+    }
+    await Data.refresh();
+    return {ok:true, id:data.id};
+  },
+  async createTask(f){
+    const title = String(f.title||'').trim();
+    if(!title) return {ok:false, message:'A task title is required.'};
+    if(DEMO){
+      const t = {id:'demo-t'+Date.now(), title, detail:'', rel:f.rel||null, due:f.due||null,
+        pri:f.pri||'Medium', owner:f.owner||ME.id, done:false};
+      S.tasks = S.tasks||[]; S.tasks.unshift(t);
+      await Data.refresh();
+      return {ok:true, id:t.id, title:t.title};
+    }
+    const c = sb(); if(!c || !ME) return {ok:false};
+    const r = f.rel ? relById(f.rel) : null;
+    const row = {
+      title, relocation_id: r ? r.uuid : null,
+      due_on: f.due || null, priority: f.pri || 'Medium', assigned_to: f.owner || null,
+    };
+    const { data, error } = await c.from('tasks').insert(row).select('id,title').single();
+    if(error){
+      console.error('[data] createTask', error);
+      return {ok:false, error, message:'We could not save that task. Please try again.'};
+    }
+    await Data.refresh();
+    return {ok:true, id:data.id, title:data.title};
+  },
+
   async invite(email, role, companyId, agentId, fullName){
+    if(DEMO) return {ok:true};
     const { error } = await sb().from('invitations').insert({
       email: String(email||'').trim().toLowerCase(), role,
       full_name: (fullName||'').trim() || null,
@@ -1568,17 +1803,19 @@ function pageHome(){
     <div class="wrap" style="position:relative;padding-top:96px;padding-bottom:96px">
       <div class="grid split2" style="grid-template-columns:1.15fr .85fr;gap:56px;align-items:center">
         <div>
-          
+          <span class="eyebrow">Corporate Relocation</span>
           <h1 class="serif" style="margin-top:18px">Corporate Relocation, <span class="gold">Made Personal.</span></h1>
           <p class="lede" style="margin-top:22px;font-size:18px">Give relocating employees a trusted local real estate expert, and give your team complete visibility from intake through closing.</p>
-          <div class="flex gap12" style="margin-top:34px;flex-wrap:wrap">
-            <a href="/contact" data-nav class="btn btn-gold">Schedule a Consultation ${ic('arrR','ic-sm')}</a>
-            <a href="/how-it-works" data-nav class="btn btn-outline-light">Explore the Platform</a>
+          <div style="display:flex;flex-direction:column;gap:14px;margin-top:28px;max-width:380px">
+            ${['Vetted agents nationwide','One coordinator per move','Real-time relocation tracking'].map(t=>`
+            <div class="flex gap12" style="align-items:center">
+              <span style="flex:none;width:22px;height:22px;border-radius:50%;background:var(--gold-deep);color:#fff;display:flex;align-items:center;justify-content:center">${ic('check','ic-sm')}</span>
+              <span style="font-size:14px;color:var(--ink)">${t}</span>
+            </div>`).join('')}
           </div>
-          <div class="flex gap16" style="margin-top:30px;flex-wrap:wrap;font-size:12.5px;color:var(--slate)">
-            <span class="flex gap8">${ic('check','ic-sm')} Vetted agents nationwide</span>
-            <span class="flex gap8">${ic('check','ic-sm')} One coordinator per move</span>
-            <span class="flex gap8">${ic('check','ic-sm')} Real-time tracking</span>
+          <div style="display:flex;flex-direction:column;gap:12px;margin-top:30px;max-width:260px">
+            <a href="/how-it-works" data-nav class="btn btn-outline-light" style="justify-content:center">Explore the Platform</a>
+            <a href="/contact" data-nav class="btn btn-gold" style="justify-content:center">Schedule a Consultation ${ic('arrR','ic-sm')}</a>
           </div>
         </div>
         <div>
@@ -2279,10 +2516,14 @@ function toggleNotif(ev){
     </div></div>`;
   document.addEventListener('click', function close(){ dd.innerHTML=''; document.removeEventListener('click', close); });
 }
-function markAllNotif(){ S.notifications.forEach(n=>n.read=true); save(); route(); toast('Notifications','All notifications marked as read.','ok'); }
-function openNotif(id){
+async function markAllNotif(){
+  const r = await Data.markAllNotificationsRead();
+  if(r && r.ok===false){ toast('Not saved','We could not update your notifications. Please try again.','err'); return; }
+  toast('Notifications','All notifications marked as read.','ok');
+}
+async function openNotif(id){
   const n = S.notifications.find(x=>x.id===id); if(!n) return;
-  n.read = true; save();
+  await Data.markNotificationRead(id);
   if(n.rel) nav('/corporate/relocations/'+n.rel); else nav('/corporate');
 }
 
@@ -2460,11 +2701,11 @@ function taskRow(t){
     </div>
   </div>`;
 }
-function toggleTask(id){
+async function toggleTask(id){
   const t = S.tasks.find(t=>t.id===id); if(!t) return;
-  t.done = !t.done; save();
-  toast(t.done?'Task completed':'Task reopened', t.title, t.done?'ok':'');
-  route();
+  const r = await Data.toggleTask(id, !t.done);
+  if(r && r.ok===false){ toast('Could not save','That change was not stored. Please try again.','err'); return; }
+  toast(!t.done?'Task completed':'Task reopened', t.title, 'ok');
 }
 
 /* =========================================================
@@ -2684,13 +2925,13 @@ function reloMatching(r){
             </div>
           </div>
           <div style="text-align:center">
-            <div style="width:58px;height:58px;border-radius:50%;border:3px solid ${c.score>=90?'var(--gold)':'var(--line)'};display:flex;align-items:center;justify-content:center;margin:0 auto">
-              <b class="num" style="font-size:16px;color:var(--navy)">${c.score}</b></div>
+            <div style="width:58px;height:58px;border-radius:50%;border:3px solid ${candScore(c.rank)>=90?'var(--gold)':'var(--line)'};display:flex;align-items:center;justify-content:center;margin:0 auto">
+              <b class="num" style="font-size:16px;color:var(--navy)">${candScore(c.rank)}</b></div>
             <span class="tiny muted">Match score</span>
           </div>
         </div>
-        <div class="flex gap8" style="margin-top:12px;flex-wrap:wrap">${c.why.map(w=>`<span class="chip" style="text-transform:none;letter-spacing:0;font-weight:600">${esc(w)}</span>`).join('')}</div>
-        <p class="small muted" style="margin-top:10px">${esc(c.recent)} Languages: ${a.langs.length?esc(a.langs.join(', ')):'\u2014'}.</p>
+        <div class="flex gap8" style="margin-top:12px;flex-wrap:wrap">${candWhy(c).map(w=>`<span class="chip" style="text-transform:none;letter-spacing:0;font-weight:600">${esc(w)}</span>`).join('')}</div>
+        <p class="small muted" style="margin-top:10px">${esc(candRecent(a))} Languages: ${a.langs.length?esc(a.langs.join(', ')):'\u2014'}.</p>
         <div class="flex gap8" style="margin-top:14px;flex-wrap:wrap">
           <button class="btn btn-gold btn-sm" onclick="approveMatch('${r.id}','${a.id}')">${ic('check','ic-sm')} Approve ${esc(a.name.split(' ')[0])}</button>
           <a class="btn btn-outline btn-sm" href="/corporate/agents/${a.id}" data-nav>View full profile</a>
@@ -2706,13 +2947,10 @@ function reloMatching(r){
 }
 function approveMatch(relId, agentId){
   const r = relById(relId), a = agentById(agentId);
-  confirmModal('Approve agent match?', `<b>${esc(a.name)}</b> (${esc(a.brokerage)}) will be introduced to <b>${esc(r.emp)}</b>. Arrival will brief the agent and confirm the first call within one business day.`, 'Approve match', ()=>{
-    r.agentId = agentId; r.status = 'Agent Assigned'; r.progress = Math.max(r.progress, 42); r.last = '2026-06-11';
-    S.activity.unshift({id:'a-x'+Date.now(),ts:'2026-06-11 '+new Date().toTimeString().slice(0,5),rel:relId,who:(ME?ME.name:'Arrival'),kind:'match',text:`Agent match approved: ${a.name}, ${a.brokerage}. Introduction underway.`});
-    S.notifications.unshift({id:'n-x'+Date.now(),ts:'2026-06-11 '+new Date().toTimeString().slice(0,5),kind:'match',text:`Agent approved for ${r.emp}, ${a.name}`,rel:relId,read:true});
-    const t = S.tasks.find(t=>t.rel===relId && t.kind==='match' && !t.done); if(t) t.done = true;
-    delete S.candidates[relId];
-    save(); RELO_TAB='timeline'; route();
+  confirmModal('Approve agent match?', `<b>${esc(a.name)}</b> (${esc(a.brokerage)}) will be introduced to <b>${esc(r.emp)}</b>. Arrival will brief the agent and confirm the first call within one business day.`, 'Approve match', async ()=>{
+    RELO_TAB = 'timeline';
+    const res = await Data.assignAgent(relId, agentId);
+    if(!res || res.ok===false){ toast('Not saved','We could not save that approval. Please try again.','err'); return; }
     toast('Agent match approved', `${a.name} will be introduced to ${r.emp}.`, 'ok');
   });
 }
@@ -2734,15 +2972,16 @@ function modalComment(relId){
     <div class="modal-f"><button class="btn btn-outline btn-sm" onclick="closeModal()">Cancel</button>
     <button class="btn btn-navy btn-sm" onclick="sendMatchComment('${relId}')">Send comment</button></div>`);
 }
-function sendMatchComment(relId){
+async function sendMatchComment(relId){
   const v = (document.getElementById('cm-note').value||'').trim();
   if(!v){ toast('Nothing to send','Write a brief comment first.','err'); return; }
-  S.activity.unshift({id:'a-x'+Date.now(),ts:'2026-06-11 '+new Date().toTimeString().slice(0,5),rel:relId,who:(ME?ME.name:'Arrival'),kind:'employer',text:'Comment for coordinator: '+v});
-  save(); closeModal(); toast('Comment sent','Your coordinator has been notified.','ok');
+  const r = await Data.addMilestone(relId, 'Comment for coordinator', v, true);
+  if(!r || r.ok===false){ toast('Not sent','That comment was not sent. Please try again.','err'); return; }
+  closeModal(); toast('Comment sent','Your coordinator has been notified.','ok');
 }
 function modalCompare(relId){
   const cands = S.candidates[relId]||[];
-  const rows = [['Match score',c=>c.score],['Rating',c=>agentById(c.agentId).rating+' / 5'],['Experience',c=>agentById(c.agentId).yrs+' yrs'],['Relocations',c=>agentById(c.agentId).done],['Median response',c=>agentById(c.agentId).resp],['Languages',c=>agentById(c.agentId).langs.join(', ')]];
+  const rows = [['Match score',c=>candScore(c.rank)],['Rating',c=>agentById(c.agentId).rating+' / 5'],['Experience',c=>agentById(c.agentId).yrs+' yrs'],['Relocations',c=>agentById(c.agentId).done],['Median response',c=>agentById(c.agentId).resp],['Languages',c=>agentById(c.agentId).langs.join(', ')]];
   openModal(`
     <div class="modal-h"><h3 style="font-size:17px">Compare candidates</h3><button class="x" onclick="closeModal()">${ic('x','ic-sm')}</button></div>
     <div class="modal-b scroll-x"><table class="tbl" style="min-width:480px">
@@ -2807,19 +3046,31 @@ function modalAddTask(relId){
     <div class="modal-b">
       <div class="field"><label>Task <span class="req">*</span></label><input class="in" id="nt-title" placeholder="e.g., Confirm temporary housing dates"></div>
       <div class="grid g3" style="gap:0 14px">
-        <div class="field"><label>Due date</label><input class="in" id="nt-due" type="date" value="2026-06-18"></div>
+        <div class="field"><label>Due date</label><input class="in" id="nt-due" type="date" value="${new Date(Date.now()+7*864e5).toISOString().slice(0,10)}"></div>
         <div class="field"><label>Priority</label><select class="in" id="nt-pri"><option>High</option><option selected>Medium</option><option>Low</option></select></div>
-        <div class="field"><label>Assigned to</label><select class="in" id="nt-own">${(S.profiles||[]).map(u=>`<option>${esc(u.name)}</option>`).join('')}</select></div>
+        <div class="field"><label>Assigned to</label><select class="in" id="nt-own">${(S.profiles||[]).map(u=>`<option value="${esc(u.id)}">${esc(u.name)}</option>`).join('')}</select></div>
       </div>
     </div>
     <div class="modal-f"><button class="btn btn-outline btn-sm" onclick="closeModal()">Cancel</button>
-    <button class="btn btn-navy btn-sm" onclick="addTask('${relId||''}')">Add task</button></div>`);
+    <button class="btn btn-navy btn-sm" id="nt-go" onclick="addTask('${relId||''}')">Add task</button></div>`);
 }
-function addTask(relId){
+async function addTask(relId){
   const title = document.getElementById('nt-title').value.trim();
   if(!title){ document.getElementById('nt-title').classList.add('err'); return; }
-  S.tasks.unshift({id:'t-x'+Date.now(),title,rel:relId||null,due:document.getElementById('nt-due').value||'2026-06-18',pri:document.getElementById('nt-pri').value,owner:document.getElementById('nt-own').value,done:false,kind:'general'});
-  save(); closeModal(); TASK_VIEW='open'; route();
+  const btn = document.getElementById('nt-go');
+  if(btn){ btn.disabled = true; btn.innerHTML = '<span class="spin"></span> Adding…'; }
+  const r = await Data.createTask({
+    title, rel: relId||null,
+    due: document.getElementById('nt-due').value || null,
+    pri: document.getElementById('nt-pri').value,
+    owner: document.getElementById('nt-own').value,
+  });
+  if(!r.ok){
+    if(btn){ btn.disabled = false; btn.textContent = 'Add task'; }
+    toast('Not saved', r.message || 'That task was not created.', 'err');
+    return;
+  }
+  closeModal(); TASK_VIEW='open';
   toast('Task added', title, 'ok');
 }
 
@@ -2895,7 +3146,7 @@ function doUpload(relId){
   S.docs.unshift({id:'d-x'+Date.now(),name:name.includes('.')?name:name+'.pdf',cat:document.getElementById('up-cat').value,rel,emp:r?r.emp:null,date:new Date().toISOString().slice(0,10),by:(ME?ME.name:'Arrival'),type:'PDF',size:(120+Math.floor(Math.random()*600))+' KB'});
   if(rel){ S.activity.unshift({id:'a-x'+Date.now(),ts:'2026-06-11 '+new Date().toTimeString().slice(0,5),rel,who:(ME?ME.name:'Arrival'),kind:'doc',text:`Document uploaded: ${name}`});
     const t = S.tasks.find(t=>t.rel===rel && t.kind==='doc' && !t.done && /upload/i.test(t.title)); if(t) t.done = true; }
-  save(); closeModal(); route();
+  closeModal(); route();
   toast('Document uploaded', name + ' (prototype)', 'ok');
 }
 
@@ -2907,10 +3158,10 @@ function reloMessages(r){
     <button class="btn btn-navy btn-sm" style="margin-top:14px" onclick="startThread('${r.id}')">${ic('plus','ic-sm')} New message</button></div>`;
   return threadView(th, true);
 }
-function startThread(relId){
-  const r = relById(relId);
-  S.threads.unshift({id:'th-x'+Date.now(),rel:relId,subject:'Question, '+r.emp,unread:false,msgs:[]});
-  save(); route();
+async function startThread(relId){
+  const r = relById(relId); if(!r) return;
+  const res = await Data.createThread(relId, 'Question, '+r.emp);
+  if(!res || res.ok===false){ toast('Not started', (res && res.message) || 'That conversation could not be started.', 'err'); return; }
 }
 function threadView(th, embedded){
   return `<div class="card" style="display:flex;flex-direction:column;max-height:640px">
@@ -3562,14 +3813,14 @@ function addMember(){
   const email = document.getElementById('tm-email').value.trim();
   if(!name||!email){ toast('Missing details','Name and email are required.','err'); return; }
   teamList().push({id:'u-x'+Date.now(),name,role:document.getElementById('tm-role').value.trim()||'Team member',title:document.getElementById('tm-access').value,email,init:initials(name)||name.slice(0,2).toUpperCase()});
-  save(); closeModal(); route();
+  closeModal(); route();
   toast('Invitation sent', name + ' has been invited to the portal. (Prototype)', 'ok');
 }
 function removeMember(id){
   const u = teamList().find(x=>x.id===id); if(!u) return;
   confirmModal('Remove team member?', `<b>${esc(u.name)}</b> will lose access to this portal. This only affects the prototype demo data.`, 'Remove access', ()=>{
     S.team = teamList().filter(x=>x.id!==id);
-    save(); route(); toast('Access removed', u.name + ' no longer has portal access.', 'ok');
+    route(); toast('Access removed', u.name + ' no longer has portal access.', 'ok');
   }, true);
 }
 
@@ -3604,7 +3855,6 @@ function pgMessages(){
 }
 function openThread(id){
   const th = S.threads.find(t=>t.id===id); if(!th) return;
-  th.unread = false; save();
   nav('/corporate/messages/'+id);
 }
 function modalNewThread(){
@@ -3618,14 +3868,14 @@ function modalNewThread(){
     <div class="modal-f"><button class="btn btn-outline btn-sm" onclick="closeModal()">Cancel</button>
     <button class="btn btn-navy btn-sm" onclick="createThread()">Start conversation</button></div>`);
 }
-function createThread(){
+async function createThread(){
   const subj = document.getElementById('nt-subj').value.trim();
   if(!subj){ toast('Subject needed','Give the conversation a subject.','err'); return; }
   const rel = document.getElementById('nt-rel').value || null;
-  const id = 'th-x'+Date.now();
-  S.threads.unshift({id,rel,subject:subj,unread:false,msgs:[]});
-  save(); closeModal();
-  nav('/corporate/messages/'+id);
+  const res = await Data.createThread(rel, subj);
+  if(!res || res.ok===false){ toast('Not sent', (res && res.message) || 'That conversation could not be started.', 'err'); return; }
+  closeModal();
+  nav('/corporate/messages/'+res.id);
 }
 function pgThread(t){
   return `
@@ -3637,7 +3887,7 @@ function pgThread(t){
    SETTINGS
    ========================================================= */
 function prefs(){ if(!S.prefs) S.prefs = {match:true,closing:true,risk:true,weekly:true,survey:false}; return S.prefs; }
-function setPref(k, v){ prefs()[k]=v; save(); toast('Preference saved','Notification settings updated.','ok'); }
+function setPref(k, v){ prefs()[k]=v; toast('Preference saved','Notification settings updated.','ok'); }
 function pgSettings(){
   const p = prefs();
   const me = ccUser();
@@ -3708,8 +3958,13 @@ function ccOwnerName(id){
   return p ? p.name : 'Arrival';
 }
 
-const PIPE_STAGES = ['New Prospect','Contacted','Discovery Scheduled','Proposal Sent','Negotiation','Won. Onboarding','Lost'];
-const PIPE_BADGE = {'New Prospect':'b-gray','Contacted':'b-gray','Discovery Scheduled':'b-navy','Proposal Sent':'b-gold','Negotiation':'b-gold','Won. Onboarding':'b-teal','Lost':'b-red','Customer':'b-teal'};
+/* Board columns and the "Move stage" modal's options, both drawn from
+   STAGE_LABEL so a company's real stage always lands in a real column.
+   Customer is excluded on purpose: the pipeline view itself already hides
+   customers (see the `open` filter in ccPipeline), and moving a company to
+   Customer without setting a tier is what ccConvert exists to prevent. */
+const PIPE_STAGES = Object.values(STAGE_LABEL).filter(s=>s!=='Customer');
+const PIPE_BADGE = {'Prospect':'b-gray','In Discussion':'b-navy','Won. Onboarding':'b-gold','Customer':'b-teal','Past':'b-gray','Lost':'b-red'};
 const TIER_DESC = {
   'Referral':'Per-transaction referral fee only. No program fee.',
   'Preferred Partner':'Annual partner fee + discounted referral split. Quarterly reviews.',
@@ -4174,12 +4429,13 @@ function ccStageModal(id){
     <div class="modal-f"><button class="btn btn-outline btn-sm" onclick="closeModal()">Cancel</button>
     <button class="btn btn-navy btn-sm" onclick="ccMoveStage('${id}')">Move</button></div>`);
 }
-function ccMoveStage(id){
+async function ccMoveStage(id){
   const c = companyById(id); if(!c) return;
   const stage = document.getElementById('st-sel').value;
   const note = document.getElementById('st-note').value.trim();
-  c.stage = stage; if(note) c.next = note;
-  save(); closeModal(); toast('Stage updated', c.name+' → '+stage, 'ok'); route();
+  const r = await Data.moveCompanyStage(id, stage, note);
+  if(!r || r.ok===false){ toast('Not saved', (r && r.message) || 'That stage change was not saved. Please try again.', 'err'); return; }
+  closeModal(); toast('Stage updated', c.name+' → '+stage, 'ok');
 }
 function ccConvert(id){
   const c = companyById(id); if(!c) return;
@@ -4195,11 +4451,12 @@ function ccConvert(id){
   const sel = document.getElementById('cv-tier');
   sel.addEventListener('change', ()=>{ document.getElementById('cv-desc').textContent = TIER_DESC[sel.value]; });
 }
-function ccConvertGo(id){
+async function ccConvertGo(id){
   const c = companyById(id); if(!c) return;
-  c.stage = 'Customer'; c.tier = document.getElementById('cv-tier').value; c.since = new Date().toISOString().slice(0,10);
-  c.next = 'Kickoff scheduled, welcome packet sent';
-  save(); closeModal(); toast('Customer activated', c.name+' is now a '+c.tier+' customer.', 'ok'); nav('/command-center/companies/'+id);
+  const tier = document.getElementById('cv-tier').value;
+  const r = await Data.convertCompanyToCustomer(id, tier);
+  if(!r || r.ok===false){ toast('Not saved', (r && r.message) || 'That company was not activated. Please try again.', 'err'); return; }
+  closeModal(); toast('Customer activated', c.name+' is now a '+tier+' customer.', 'ok'); nav('/command-center/companies/'+id);
 }
 
 /* ---------- companies ---------- */
@@ -4253,7 +4510,7 @@ function ccRelo(r){
       <div class="flex between" style="flex-wrap:wrap;gap:10px">
         <div class="flex gap12"><div class="avatar gold">${initials(a.name)}</div>
           <div><b style="font-size:13.5px;color:var(--navy)">${esc(a.name)}</b><div class="tiny muted">${[a.brokerage,a.market].filter(Boolean).map(esc).join(' · ')||'Details not recorded'} · ${a.rating} ★ · ${a.done} relocations</div></div></div>
-        <div class="flex gap8"><span class="chip">Match ${c.score}</span>
+        <div class="flex gap8"><span class="chip">Match ${candScore(c.rank)}</span>
         <button class="btn btn-navy btn-xs" onclick="ccAssign('${r.id}','${a.id}')">Assign</button></div>
       </div></div>`; }).join('')}
     </div></div>`:''}
@@ -4336,23 +4593,25 @@ function ccCompany(c){
   ${txs.length?`<div class="card" style="margin-top:14px"><div class="card-pad" style="padding-bottom:0"><h3 style="font-size:15px">Transactions (${txs.length})</h3></div>${ccTxTable(txs)}</div>`:''}
   ${docs.length?`<div class="card card-pad" style="margin-top:14px"><h3 style="font-size:15px;margin-bottom:8px">Documents</h3>${docs.map(d=>`<div class="flex gap8 small" style="padding:6px 0">${ic('doc','ic-sm')} ${esc(d.name)} <span class="badge b-gray" style="font-size:9px">${esc(d.vis)}</span></div>`).join('')}</div>`:''}`;
 }
-function ccCurate(relId){
+async function ccCurate(relId){
   const r = anyRel(relId); if(!r) return;
   const city = (r.dest||'').split(',')[0].trim();
   const local = S.agents.filter(a=>(a.market||'').indexOf(city)===0);
   const fill = S.agents.filter(a=>(a.market||'').indexOf(city)!==0).sort((x,y)=>y._rating-x._rating);
-  const picks = local.concat(fill).slice(0,3);
-  S.candidates[relId] = picks.map((a,i)=>({agentId:a.id, score:95-i*7,
-    why:[a.specs[0], (a.market||'').indexOf(city)===0?'Local market expert':'Nearby-market exception (coverage gap)', a.resp+' median response'],
-    recent:`${a.done} managed relocations completed. ${(a.market||'').indexOf(city)===0?'':'Flagged: outside primary market, exception approval noted.'}`}));
-  if(r.status==='Intake'||r.status==='Preferences Pending'){ r.status='Matching'; r.progress=Math.max(r.progress,22); }
-  save(); toast('Three agents curated', city + (local.length<3 ? ' roster is thin, out-of-market exceptions included.' : ' candidates ready to send.'), local.length<3?'err':'ok'); route();
+  const picks = local.concat(fill).slice(0,3).map(a=>{
+    const isLocal = (a.market||'').indexOf(city)===0;
+    return { agentId:a.id, rationale:[a.specs[0], isLocal?'Local market expert':'Nearby-market exception (coverage gap)', a.resp+' median response'].join('; ') };
+  });
+  const res = await Data.curateCandidates(relId, picks);
+  if(!res || res.ok===false){ toast('Not saved', (res && res.message) || 'The candidate shortlist was not saved. Please try again.', 'err'); return; }
+  toast('Three agents curated', city + (local.length<3 ? ' roster is thin, out-of-market exceptions included.' : ' candidates ready to send.'), local.length<3?'err':'ok');
 }
 function ccAssign(relId, agentId){
   const r = anyRel(relId), a = agentById(agentId); if(!r||!a) return;
-  confirmModal('Assign agent?', `<b>${esc(a.name)}</b> will be assigned to <b>${esc(r.emp)}</b> and the managed introduction begins.`, 'Assign agent', ()=>{
-    r.agentId = agentId; r.status='Agent Assigned'; r.progress=Math.max(r.progress,42); delete S.candidates[relId];
-    save(); toast('Agent assigned', a.name+' → '+r.emp, 'ok'); route();
+  confirmModal('Assign agent?', `<b>${esc(a.name)}</b> will be assigned to <b>${esc(r.emp)}</b> and the managed introduction begins.`, 'Assign agent', async ()=>{
+    const res = await Data.assignAgent(relId, agentId);
+    if(!res || res.ok===false){ toast('Not assigned','We could not save that assignment. Please try again.','err'); return; }
+    toast('Agent assigned', a.name+' → '+r.emp, 'ok');
   });
 }
 
@@ -4627,7 +4886,6 @@ function ccMessages(){
   </div>`;
 }
 function ccThread(t){
-  t.unread = false; save();
   const me = ccUser();
   return `<a class="linklike tiny" href="/command-center/messages" data-nav>${ic('arrL','ic-sm')} All messages</a>
   <div class="card card-pad" style="margin-top:10px">
@@ -4643,12 +4901,18 @@ function ccThread(t){
     </div>
   </div>`;
 }
-function ccSend(tid){
+async function ccSend(tid){
   const t=(S.threads||[]).find(x=>x.id===tid); const inp=document.getElementById('cc-msg');
   if(!t||!inp||!inp.value.trim()) return;
-  const me = ccUser();
-  t.msgs.push({who:me.name, role:'Arrival '+me.role, ts:new Date().toISOString().slice(0,10)+' '+new Date().toTimeString().slice(0,5), text:inp.value.trim()});
-  save(); route(); toast('Reply sent','Posted to the thread.','ok');
+  const text = inp.value.trim();
+  inp.disabled = true;
+  const r = await Data.postMessage(tid, text);
+  inp.disabled = false;
+  if(r && r.ok===false){
+    toast('Not sent','That message was not delivered. Please try again.','err');
+    return;
+  }
+  toast('Reply sent','Posted to the thread.','ok');
 }
 
 /* ---------- team & settings ---------- */
@@ -4876,22 +5140,25 @@ function agDash(){
 
 /* ---------- opportunities ---------- */
 function oppCard(o){
-  const s = o.summary;
+  /* summary is free text on the real column (and in the demo fixture) — not
+     the {role,type,mode,budget,household,timeline,area} object this used to
+     assume, which never matched either source. company and channel aren't
+     stored on the opportunity itself; both come from the relocation it's
+     attached to, same as the transactions mapping in Data.loadAll(). */
+  const rel = o.relId ? relById(o.relId) : null;
+  const co = rel && rel.companyId ? companyById(rel.companyId) : null;
+  const channel = (rel && rel.channel) || 'Corporate';
+  const companyName = co ? co.name : (rel ? rel.emp : 'Direct client');
   const gated = ['New','Declined','Expired'].includes(o.status);
   return `<div class="card card-pad">
     <div class="flex between" style="flex-wrap:wrap;gap:8px">
       <div><b style="font-size:14.5px;color:var(--navy)">${esc(o.title)}</b>
-      <div class="tiny muted">${esc(o.company)} · sent ${fmtDs(o.sent)}${o.respondBy&&o.status==='New'?` · respond by ${fmtDs(o.respondBy)}`:''}</div></div>
-      <span class="flex gap8" style="flex-wrap:wrap">${drChannelBadge(o.channel)}<span class="badge ${OPP_BADGE[o.status]||'b-gray'}">${esc(o.status)}</span></span>
+      <div class="tiny muted">${esc(companyName)} · sent ${fmtDs(o.sent)}${o.respondBy&&o.status==='New'?` · respond by ${fmtDs(o.respondBy)}`:''}</div></div>
+      <span class="flex gap8" style="flex-wrap:wrap">${drChannelBadge(channel)}<span class="badge ${OPP_BADGE[o.status]||'b-gray'}">${esc(o.status)}</span></span>
     </div>
-    <div class="grid gap12" style="grid-template-columns:repeat(3,1fr);margin-top:12px">
-      <div><span class="tiny muted">ROLE / TYPE</span><div class="small" style="font-weight:600;color:var(--ink)">${esc(s.role)}<br><span class="muted" style="font-weight:400">${esc(s.type)}</span></div></div>
-      <div><span class="tiny muted">MODE / BUDGET</span><div class="small" style="font-weight:600;color:var(--ink)">${esc(s.mode)}<br><span class="muted" style="font-weight:400">${esc(s.budget)}</span></div></div>
-      <div><span class="tiny muted">HOUSEHOLD / TIMELINE</span><div class="small" style="font-weight:600;color:var(--ink)">${esc(s.household)}<br><span class="muted" style="font-weight:400">${esc(s.timeline)}</span></div></div>
-    </div>
-    <p class="small" style="margin-top:10px;color:var(--slate)">${ic('pin','ic-sm')} ${esc(s.area)}</p>
-    <p class="tiny muted" style="margin-top:6px">${esc(o.fee)} · ${esc(o.note)}</p>
-    ${gated&&o.status==='New'?`<p class="tiny" style="margin-top:8px;color:var(--gold-deep)">${ic('lock','ic-sm')} ${o.channel&&o.channel!=='Corporate'?'Client':'Employee'} identity, contact details, and full file unlock after you accept.</p>`:''}
+    <p class="small" style="margin-top:12px;color:var(--ink)">${esc(o.summary)}</p>
+    <p class="tiny muted" style="margin-top:6px">${esc(o.fee)}</p>
+    ${gated&&o.status==='New'?`<p class="tiny" style="margin-top:8px;color:var(--gold-deep)">${ic('lock','ic-sm')} ${channel!=='Corporate'?'Client':'Employee'} identity, contact details, and full file unlock after you accept.</p>`:''}
     <div class="flex gap8" style="margin-top:12px;flex-wrap:wrap">
       ${o.status==='New'?`<button class="btn btn-gold btn-sm" onclick="oppAccept('${o.id}')">${ic('check','ic-sm')} Accept opportunity</button>
         <button class="btn btn-outline btn-sm" onclick="oppDecline('${o.id}')">Decline</button>
@@ -4910,10 +5177,10 @@ function agOpps(){
 }
 function oppAccept(id){
   const o = oppById(id); if(!o) return;
-  confirmModal('Accept this opportunity?', `You\u2019ll be presented to the relocating employee as one of up to three curated profiles. Full details unlock on acceptance.`, 'Accept', ()=>{
-    o.status='Accepted'; o.accepted=new Date().toISOString().slice(0,10);
-    o.note='Accepted. You are one of three profiles presented, awaiting the employee\u2019s selection.';
-    save(); toast('Opportunity accepted','Your profile is now in front of the employee.','ok'); route();
+  confirmModal('Accept this opportunity?', `You\u2019ll be presented to the relocating employee as one of up to three curated profiles. Full details unlock on acceptance.`, 'Accept', async ()=>{
+    const r = await Data.respondOpportunity(id, 'Accepted');
+    if(!r || r.ok===false){ toast('Not saved', (r && r.message) || 'That response was not saved. Please try again.', 'err'); return; }
+    toast('Opportunity accepted','Your profile is now in front of the employee.','ok');
   });
 }
 function oppDecline(id){
@@ -4926,11 +5193,13 @@ function oppDecline(id){
     <div class="modal-f"><button class="btn btn-outline btn-sm" onclick="closeModal()">Cancel</button>
     <button class="btn btn-navy btn-sm" onclick="oppDeclineGo('${id}')">Decline</button></div>`);
 }
-function oppDeclineGo(id){
+async function oppDeclineGo(id){
   const o = oppById(id); if(!o) return;
-  const why = document.getElementById('od-why').value;
-  o.status='Declined'; o.declined=new Date().toISOString().slice(0,10); o.note='You declined ('+why.toLowerCase()+'). Arrival is rerouting to another agent.';
-  save(); closeModal(); toast('Opportunity declined','Arrival has been notified and will reroute.','ok'); route();
+  // The decline reason has nowhere to persist: opportunities has no column
+  // for it, so only the status change itself is saved.
+  const r = await Data.respondOpportunity(id, 'Declined');
+  if(!r || r.ok===false){ toast('Not saved', (r && r.message) || 'That response was not saved. Please try again.', 'err'); return; }
+  closeModal(); toast('Opportunity declined','Arrival has been notified and will reroute.','ok');
 }
 function oppInfo(id){
   const o = oppById(id); if(!o) return;
@@ -4975,21 +5244,13 @@ function agUpdateModal(oppId){
     <button class="btn btn-gold btn-sm" onclick="agUpdateGo('${oppId}')">Post update</button></div>`);
 }
 const MS_STATUS = {'Home search started':'Home Search','Under contract':'Under Contract','Closing scheduled':'Closing Scheduled','Closed':'Completed'};
-function agUpdateGo(oppId){
+async function agUpdateGo(oppId){
   const o = oppById(oppId); const r = anyRel(o.relId); if(!r) return;
   const ms = document.getElementById('au-ms').value;
   const note = document.getElementById('au-note').value.trim();
-  const today = new Date().toISOString().slice(0,10);
-  const ts = today + ' ' + new Date().toTimeString().slice(0,5);
-  r.notes = ms + (note ? ', ' + note : '') + ' (agent update)';
-  r.progress = Math.min(100, r.progress + 5); r.last = today;
-  if(MS_STATUS[ms]){ r.status = MS_STATUS[ms]; if(ms==='Closed') r.progress = 100; }
-  const th = (S.threads||[]).find(t=>t.rel===o.relId);
-  if(th) th.msgs.push({who:agMe().name, role:'Agent', ts, text:'Milestone: '+ms+(note?', '+note:'')});
-  // real-time visibility to Arrival: activity log + notification
-  S.activity = S.activity||[]; S.activity.unshift({id:'a-x'+Date.now(),ts,rel:o.relId,who:agMe().name,kind:'status',text:`Milestone update, ${ms} for ${r.emp} (${o.relId}).`});
-  S.notifications = S.notifications||[]; S.notifications.unshift({id:'n-x'+Date.now(),ts,kind:'status',text:`${ms}, ${r.emp} (${o.relId})`,rel:o.relId,read:false});
-  save(); closeModal(); toast('Update posted', ms+', Arrival is notified and the employer\u2019s tracking view is updated.', 'ok'); route();
+  const res = await Data.postAgentUpdate(o.relId, ms, note);
+  if(!res || res.ok===false){ toast('Not posted', (res && res.message) || 'That update was not saved. Please try again.', 'err'); return; }
+  closeModal(); toast('Update posted', ms+', Arrival is notified and the employer\u2019s tracking view is updated.', 'ok');
 }
 
 /* ---------- messages ---------- */
@@ -5002,7 +5263,6 @@ function agMessages(){
   </a>`).join('')}</div>`;
 }
 function agThread(t){
-  t.unread=false; save();
   const me = agMe();
   return `<a class="linklike tiny" href="/agent/messages" data-nav>${ic('arrL','ic-sm')} All messages</a>
   <div class="card card-pad" style="margin-top:10px">
@@ -5018,11 +5278,18 @@ function agThread(t){
     </div>
   </div>`;
 }
-function agSend(tid){
+async function agSend(tid){
   const t=(S.threads||[]).find(x=>x.id===tid); const inp=document.getElementById('ag-msg');
   if(!t||!inp||!inp.value.trim()) return;
-  t.msgs.push({who:agMe().name, role:'Agent', ts:new Date().toISOString().slice(0,10)+' '+new Date().toTimeString().slice(0,5), text:inp.value.trim()});
-  save(); route(); toast('Reply sent','Your coordinator will be notified.','ok');
+  const text = inp.value.trim();
+  inp.disabled = true;
+  const r = await Data.postMessage(tid, text);
+  inp.disabled = false;
+  if(r && r.ok===false){
+    toast('Not sent','That message was not delivered. Please try again.','err');
+    return;
+  }
+  toast('Reply sent','Your coordinator will be notified.','ok');
 }
 
 /* ---------- profile builder ---------- */
@@ -5064,11 +5331,11 @@ function agProfileSave(){
   pr.headline = document.getElementById('pf-headline').value;
   pr.funFact = document.getElementById('pf-fun').value;
   pr.serviceNote = document.getElementById('pf-svc').value;
-  save(); toast('Profile saved','Your updated profile is live for new opportunities.','ok'); route();
+  toast('Profile saved','Your updated profile is live for new opportunities.','ok'); route();
 }
 function agProfileVideo(){
   (S.agentProfile||(S.agentProfile={})).video = true;
-  save(); toast('Video uploaded','Your 60-second intro will appear on employee selection pages.','ok'); route();
+  toast('Video uploaded','Your 60-second intro will appear on employee selection pages.','ok'); route();
 }
 
 /* ---------- coverage ---------- */
@@ -5257,7 +5524,9 @@ function empIntakeSubmit(relId){
   r.status = 'Matching'; r.progress = Math.max(r.progress, 20); r.last = new Date().toISOString().slice(0,10);
   r.notes = 'Employee intake completed via secure link. Arrival review and agent matching underway.';
   S.activity.unshift({id:'a-x'+Date.now(), ts:r.last+' '+new Date().toTimeString().slice(0,5), rel:relId, who:r.emp, kind:'intake', text:'Employee intake completed for '+r.emp+' ('+relId+').'});
-  save(); nav('/e/confirm/intake');
+  // No session on a secure-link page (ME is null by design), so this can't
+  // write through the authenticated Data.* path yet.
+  nav('/e/confirm/intake');
 }
 
 /* ---------- 3-agent selection ---------- */
@@ -5309,7 +5578,9 @@ function empPick(relId, agentId){
     r.notes = r.emp+' selected '+a.name+' via the secure selection link. Introduction underway.';
     delete S.candidates[relId];
     S.activity.unshift({id:'a-x'+Date.now(), ts:r.last+' '+new Date().toTimeString().slice(0,5), rel:relId, who:r.emp, kind:'match', text:r.emp+' selected '+a.name+' ('+a.brokerage+').'});
-    save(); nav('/e/confirm/select');
+    // No session on a secure-link page (ME is null by design), so this can't
+    // write through the authenticated Data.* path yet.
+    nav('/e/confirm/select');
   });
 }
 function empInterview(relId, agentId){
@@ -5595,10 +5866,12 @@ function drSubmitIntake(){
   const inq = {id, name:(d.first+' '+d.last).trim(), email:d.email, phone:d.phone||'', origin:d.origin, dest:d.dest, mode:d.mode||'Not sure yet', budget:d.budget||'TBD', household:d.household||'—', timeline:d.timeline,
     channel: referred?'Referred':'Direct', source: referred ? ('Referral, ' + (d.refname||'name not provided')) : (d.heard||'Direct inquiry'),
     refName: referred?(d.refname||''):undefined, refRelation: referred?(d.refrel||''):undefined,
-    stage:'New Inquiry', created:'2026-06-12', last:'2026-06-12', agentIds:[], agentId:null, relId:null, token:null,
+    stage:'New Inquiry', created:new Date().toISOString().slice(0,10), last:new Date().toISOString().slice(0,10), agentIds:[], agentId:null, relId:null, token:null,
     prefs:[d.commstyle,d.language?('Language: '+d.language):'',d.priorities,d.agentnotes].filter(Boolean).join(' · '),
     notes:'Submitted via Direct Relocation intake form.' + (d.musts?(' Must-haves: '+d.musts):'') + (d.reason?(' Reason: '+d.reason):'')};
-  S.directInquiries = S.directInquiries||[]; S.directInquiries.unshift(inq); save();
+  // No session on this public form (ME is null by design), so this can't
+  // write through the authenticated Data.* path yet.
+  S.directInquiries = S.directInquiries||[]; S.directInquiries.unshift(inq);
   DRW = {step:8, doneId:id, doneEmail:d.email, d:{}}; try{ localStorage.removeItem(DRW_KEY); }catch(e){}
   route(); window.scrollTo(0,0);
   toast('Inquiry received', 'Confirmation email simulated to ' + inq.email + ', request ' + id + '.', 'ok');
@@ -5647,8 +5920,10 @@ function drSubmitRefer(){
   if(!theirFirst) miss.push('their first name'); if(!theirContact) miss.push('their email or phone');
   if(!consent||!consent.checked) miss.push('the confirmation checkbox');
   if(miss.length){ toast('A few things first','Please provide: '+miss.join(', ')+'.', 'warn'); return; }
-  const ref = {id:nextRefId(), referrer:yourName, refEmail:yourEmail, relation:rel||'Not specified', referred:theirFirst, invited:'2026-06-12', opened:false, status:'Invitation Sent', inqId:null, relId:null, notes:'Submitted via public referral form.' + (note?(' Note: '+note):'')};
-  S.referrals = S.referrals||[]; S.referrals.unshift(ref); save();
+  const ref = {id:nextRefId(), referrer:yourName, refEmail:yourEmail, relation:rel||'Not specified', referred:theirFirst, invited:new Date().toISOString().slice(0,10), opened:false, status:'Invitation Sent', inqId:null, relId:null, notes:'Submitted via public referral form.' + (note?(' Note: '+note):'')};
+  // No session on this public form (ME is null by design), so this can't
+  // write through the authenticated Data.* path yet.
+  S.referrals = S.referrals||[]; S.referrals.unshift(ref);
   DR_REF_DONE = {name:theirFirst, id:ref.id};
   route(); window.scrollTo(0,0);
   toast('Invitation on its way','A private invitation to '+theirFirst+' has been simulated for this prototype.','ok');
@@ -5748,7 +6023,10 @@ function jInterview(tok, agId){
   inq.interviews = inq.interviews||[];
   if(!inq.interviews.includes(agId)) inq.interviews.push(agId);
   if(inq.stage==='Agents Presented') inq.stage='Interview Stage';
-  inq.last='2026-06-12'; save(); route();
+  inq.last=new Date().toISOString().slice(0,10);
+  // No session on this token-based page (ME is null by design), so this
+  // can't write through the authenticated Data.* path yet.
+  route();
   const a=agentById(agId); toast('Interview requested','We\u2019ve let '+(a?a.name:'the agent')+' know, proposed times will arrive by email (simulated).','ok');
 }
 function jCompare(tok){
@@ -5771,7 +6049,10 @@ function jSelect(tok, agId){
   const inq = drByToken(tok); if(!inq) return;
   const a = agentById(agId);
   confirmModal('Select ' + (a?a.name:'this agent') + '?', 'You can interview the other agents first if you\u2019d like, this choice confirms ' + esc(a?a.name:'this agent') + ' as your relocation agent.', 'Confirm Selection', ()=>{
-    inq.agentId = agId; inq.stage='Agent Selected'; inq.last='2026-06-12'; save(); route();
+    inq.agentId = agId; inq.stage='Agent Selected'; inq.last=new Date().toISOString().slice(0,10);
+    // No session on this token-based page (ME is null by design), so this
+    // can't write through the authenticated Data.* path yet.
+    route();
     toast('Agent selected', (a?a.name:'Your agent') + ' has been confirmed. Your coordinator will make the introduction (simulated).', 'ok');
   });
 }
@@ -5900,12 +6181,16 @@ function ccDirect(){
 function drStage(id){
   const inq = drById(id); if(!inq) return;
   const el = document.getElementById('dr-stage-'+id); if(!el) return;
-  inq.stage = el.value; inq.last = '2026-06-12'; save(); route();
+  // direct_inquiries has no columns for the fields this whole pipeline
+  // manages beyond stage/notes (agentIds, token, channel, budget, household
+  // are all local-only), so this stays local rather than half-persisting.
+  inq.stage = el.value; inq.last = new Date().toISOString().slice(0,10);
+  route();
   toast('Stage updated', inq.name + ' \u2192 ' + inq.stage + '.', 'ok');
 }
 function drCopyJourney(id){
   const inq = drById(id); if(!inq) return;
-  if(!inq.token){ inq.token = drNewToken(); save(); route(); }
+  if(!inq.token){ inq.token = drNewToken(); route(); }
   copyLink('/journey/' + inq.token);
 }
 function drCurate(id){
@@ -5931,25 +6216,31 @@ function drCurateSave(id){
   inq.agentIds = picked;
   if(picked.length && ['New Inquiry','Contacted','Qualified','Discovery Call Scheduled','Discovery Call Completed','Needs Assessment','Agent Matching'].includes(inq.stage)) inq.stage='Agents Presented';
   if(picked.length && !inq.token) inq.token = drNewToken();
-  inq.last='2026-06-12'; save(); closeModal(); route();
+  inq.last=new Date().toISOString().slice(0,10);
+  closeModal(); route();
   toast('Agents updated', picked.length + ' agent' + (picked.length===1?'':'s') + ' curated for ' + inq.name + '.', 'ok');
 }
 function drConvert(id){
   const inq = drById(id); if(!inq || inq.relId) return;
   confirmModal('Convert to relocation?', 'Creates a ' + esc(inq.channel.toLowerCase()) + '-channel consumer relocation for ' + esc(inq.name) + ' (self-funded, no corporate account).', 'Convert', ()=>{
     const relId = nextRelId();
-    const rel = {id:relId, company: inq.channel==='Referred'?'Referred (Consumer)':'Direct (Consumer)', channel:inq.channel, emp:inq.name, role:'Consumer relocation', dept:'—', email:inq.email, phone:inq.phone, origin:inq.origin, dest:inq.dest, type:inq.channel+' Relocation', mode: /rent/i.test(inq.mode||'')?'Renter':'Buyer', status:'Active', risk:'Low', agentId:inq.agentId||null, target:'2026-09-30', submitted:'2026-06-12', pace:7.0, progress:12, last:'2026-06-12', budget:inq.budget||'TBD', household:inq.household||'—', notes:'Converted from '+inq.channel.toLowerCase()+' inquiry '+inq.id+'.'+(inq.refName?' Referred by '+inq.refName+'.':''), inqId:inq.id, refName:inq.refName};
+    const today = new Date().toISOString().slice(0,10);
+    const rel = {id:relId, company: inq.channel==='Referred'?'Referred (Consumer)':'Direct (Consumer)', channel:inq.channel, emp:inq.name, role:'Consumer relocation', dept:'—', email:inq.email, phone:inq.phone, origin:inq.origin, dest:inq.dest, type:inq.channel+' Relocation', mode: /rent/i.test(inq.mode||'')?'Renter':'Buyer', status:'Active', risk:'Low', agentId:inq.agentId||null, target:'2026-09-30', submitted:today, pace:7.0, progress:12, last:today, budget:inq.budget||'TBD', household:inq.household||'—', notes:'Converted from '+inq.channel.toLowerCase()+' inquiry '+inq.id+'.'+(inq.refName?' Referred by '+inq.refName+'.':''), inqId:inq.id, refName:inq.refName};
+    // This relocation shape doesn't match what Data.loadAll() actually maps
+    // (no company/channel/dept/pace/inqId/refName columns exist there), and
+    // direct_inquiries itself has no columns for most of what this pipeline
+    // tracks — this whole conversion stays local rather than half-persisting.
     S.relocations.unshift(rel);
-    inq.relId = relId; inq.stage='Converted to Relocation'; inq.last='2026-06-12';
+    inq.relId = relId; inq.stage='Converted to Relocation'; inq.last=today;
     const ref = (S.referrals||[]).find(r=>r.inqId===inq.id); if(ref) ref.status='Active', ref.relId=relId;
-    save(); nav('/command-center/relocations/'+relId);
+    nav('/command-center/relocations/'+relId);
     toast('Relocation created', inq.name + ' is now ' + relId + ' (' + inq.channel + ' channel).', 'ok');
   });
 }
 function drLost(id){
   const inq = drById(id); if(!inq) return;
   confirmModal('Mark as lost?', esc(inq.name) + '\u2019s inquiry will move to Lost. It stays on record and can be reopened.', 'Mark Lost', ()=>{
-    inq.stage='Lost'; inq.last='2026-06-12'; save(); route(); toast('Inquiry updated', inq.name + ' marked Lost.', 'ok');
+    inq.stage='Lost'; inq.last=new Date().toISOString().slice(0,10); route(); toast('Inquiry updated', inq.name + ' marked Lost.', 'ok');
   }, true);
 }
 function ccDirectRec(inq){
@@ -7540,7 +7831,7 @@ function mrApprove(id){
   confirmModal('Approve this report?', `Approving freezes <b>version ${(r.version||0)+1}</b> as an immutable snapshot and unlocks delivery to ${esc(r.inputs.recipient)}.<br><br><span class="tiny" style="color:var(--gold-deep)">Score model ${MR_SCORE_MODEL.name} v${MR_SCORE_MODEL.version} is a DRAFT, production approval requires Arrival-approved weights.</span>`, 'Approve', ()=>{
     r.status='approved'; r.version=(r.version||0)+1; r.approvedBy=ccUser().name; r.approvedAt=new Date().toISOString().slice(0,10);
     mrLog(r,'Version '+r.version+' approved. Draft score model acknowledged.');
-    save(); toast('Report approved','Version '+r.version+' frozen, ready to send.','ok'); route();
+    toast('Report approved','Version '+r.version+' frozen, ready to send.','ok'); route();
   });
 }
 function mrSend(id){
@@ -7551,26 +7842,26 @@ function mrSend(id){
     const ts=new Date().toISOString().slice(0,16).replace('T',' ');
     r.delivery=r.delivery||[]; r.delivery.unshift({ts, to:r.inputs.recipient, status:'Delivered (simulated)', id:'dlv-sim-'+Math.random().toString(36).slice(2,7)});
     r.status='sent'; r.sentAt=ts; mrLog(r,'Report sent (simulated) to '+r.inputs.recipient+'.');
-    save(); toast('Sent (simulated)','Secure link + PDF delivered to '+r.inputs.recipient+'.','ok'); route();
+    toast('Sent (simulated)','Secure link + PDF delivered to '+r.inputs.recipient+'.','ok'); route();
   });
 }
 function mrRevoke(id){
   const r=mrById(id); if(!r) return;
   confirmModal('Revoke secure link?','The recipient link stops working immediately. You can issue a new link afterwards.','Revoke', ()=>{
-    r.revoked=true; mrLog(r,'Secure link revoked.'); save(); toast('Access revoked','The report link no longer resolves.','ok'); route();
+    r.revoked=true; mrLog(r,'Secure link revoked.'); toast('Access revoked','The report link no longer resolves.','ok'); route();
   }, true);
 }
 function mrReissue(id){
   const r=mrById(id); if(!r) return;
   r.token=mrNewToken(); r.revoked=false; mrLog(r,'New secure link issued (old token invalidated).');
-  save(); toast('New link issued','Copy the new secure link to share it.','ok'); route();
+  toast('New link issued','Copy the new secure link to share it.','ok'); route();
 }
 function mrRegen(id){
   const r=mrById(id); if(!r||!r.scores) return;
   if((r.aiRegens||0)>=MR_CAPS.ai){ toast('AI call cap reached','This report has used its '+MR_CAPS.ai+'-call narrative budget.','err'); return; }
   r.aiRegens=(r.aiRegens||0)+1; if(r.job) r.job.calls.ai=Math.min(MR_CAPS.ai, r.job.calls.ai+1);
   r.narr=mrNarratives(r); mrLog(r,'Narrative regenerated ('+r.aiRegens+'/'+MR_CAPS.ai+'), grounding validator passed.');
-  save(); toast('Narrative regenerated','Grounded against approved data points.','ok'); route();
+  toast('Narrative regenerated','Grounded against approved data points.','ok'); route();
 }
 function mrOverride(id, idx){
   const r=mrById(id); const p=r&&r.dataPoints[idx]; if(!p) return;
@@ -7592,7 +7883,7 @@ function mrOverrideGo(id, idx){
   r.overrides=r.overrides||[]; r.overrides.push({key:p.key, orig:p.value, val, reason:why, user:ccUser().name, ts:new Date().toISOString().slice(0,16).replace('T',' ')});
   p.value=isNaN(parseFloat(val))?val:parseFloat(val); p.state='overridden';
   r.confidence=mrConfidence(r); mrLog(r,'Override on '+p.key+', "'+why+'"');
-  save(); closeModal(); toast('Override applied','Logged with reason; confidence recalculated.','ok'); route();
+  closeModal(); toast('Override applied','Logged with reason; confidence recalculated.','ok'); route();
 }
 
 /* ---- integrations status ---- */
@@ -7864,11 +8155,11 @@ function demoFixture(){
 
   const opportunities = [
     {id:'demo-o1', relId:'ARP-104830', agentId:'demo-a5', title:'Buyer, relocation — Charlotte, NC',
-     status:'Sent', sent:demoISO(1,'09:00'), respondBy:demoDate(1), fee:'Standard referral terms',
+     status:'New', sent:demoISO(1,'09:00'), respondBy:demoDate(1), fee:'Standard referral terms',
      summary:'Transferring employee, family of three, target under $650k, hybrid schedule. Name released on acceptance.',
      respondedAt:null},
     {id:'demo-o2', relId:null, agentId:'demo-a5', title:'Renter, 12 months — Charlotte, NC',
-     status:'Sent', sent:demoISO(3,'11:30'), respondBy:demoDate(2), fee:'Standard referral terms',
+     status:'New', sent:demoISO(3,'11:30'), respondBy:demoDate(2), fee:'Standard referral terms',
      summary:'Healthcare hire relocating from out of state, renting for a year before buying.',
      respondedAt:null},
     {id:'demo-o3', relId:'ARP-104766', agentId:'demo-a5', title:'Buyer & seller — Charlotte, NC',
