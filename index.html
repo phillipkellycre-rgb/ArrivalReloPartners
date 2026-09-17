@@ -1419,6 +1419,24 @@ function chartBars(items, color){
    /arrival. Links are authored as "/arrival/x"; the click handler below strips
    that prefix and nav() re-adds BASE, so both hosts work from one source. */
 const BASE = '';   // standalone client site, served at the domain root
+/* pushState/replaceState throw on file:// origins (no server, no real URL to
+   resolve against): opened directly instead of served, every click threw before
+   route() ran and looked dead. Catching the throw alone is not enough, though,
+   because location.pathname then never changes either, so curPath() would keep
+   resolving to the same page no matter what nav() asked for. CURRENT_PATH is the
+   in-memory fallback: every push/replace updates it, and curPath() prefers it
+   once navigation has happened at all. On a real server pushState succeeds and
+   the two stay in lockstep, so this changes nothing there; popstate (back/
+   forward) clears it so the real, browser-restored URL wins again. */
+let CURRENT_PATH = null;
+function setPath(u, replace){
+  try{ replace ? history.replaceState({}, '', u) : history.pushState({}, '', u); }catch(e){}
+  let p = u;
+  if(BASE && p.startsWith(BASE)) p = p.slice(BASE.length);
+  CURRENT_PATH = p || '/';
+}
+function pushUrl(u){ setPath(u, false); }
+function replaceUrl(u){ setPath(u, true); }
 function nav(path){
   if(!path.startsWith('/')) path = '/' + path;
   /* BASE is '' on this standalone site, so `BASE + ''` for the home path used to
@@ -1427,16 +1445,17 @@ function nav(path){
      the same page: the logo looked dead on every page except home. Always push a
      real path. */
   const url = path==='/' ? (BASE || '/') : BASE + path;
-  history.pushState({}, '', url);
+  pushUrl(url);
   route();
   window.scrollTo({top:0});
 }
-window.addEventListener('popstate', route);
+window.addEventListener('popstate', ()=>{ CURRENT_PATH = null; route(); });
 document.addEventListener('click', e=>{
   const a = e.target.closest('a[data-nav]');
   if(a){ e.preventDefault(); const href = a.getAttribute('href'); nav(href.replace(/^\/arrival/,'') || '/'); }
 });
 function curPath(){
+  if(CURRENT_PATH !== null) return CURRENT_PATH;
   let p = location.pathname.replace(/\/+$/,'');
   if(BASE && p.startsWith(BASE)) p = p.slice(BASE.length);
   p = p.replace(/^\/arrival(?=\/|$)/,'');   // tolerate legacy /arrival links
@@ -1448,7 +1467,7 @@ function route(){
   const app = document.getElementById('app');
   closeModal();
   // legacy path → corporate portal
-  if(p.startsWith('/dashboard')){ history.replaceState({},'',BASE + p.replace('/dashboard','/corporate')); return route(); }
+  if(p.startsWith('/dashboard')){ replaceUrl(BASE + p.replace('/dashboard','/corporate')); return route(); }
   /* Employee and consumer secure links run on the same seeded records as the
      workspaces, so they sit BEHIND the production gate below, not in front of
      it. They used to be handled here, above the gate, which meant a seeded
@@ -1466,8 +1485,11 @@ function route(){
 
   /* Session state, not just presence. 'pending' means boot() has not finished
      resolving the session yet; rendering the login screen then would sign out
-     every returning user on refresh. */
-  if(isPortalPath(p)){
+     every returning user on refresh. /login is excluded: it is where a signed-
+     out visitor lands BECAUSE the session check failed or found nothing, so
+     gating it on that same failure made it unreachable, the one page that must
+     never depend on already having a working session. */
+  if(isPortalPath(p) && p !== '/login'){
     if(AUTH_STATE === 'pending'){ app.innerHTML = bootSplash(); return; }
     if(AUTH_STATE === 'no_access'){ pageNoAccess(app); return; }
     if(AUTH_STATE === 'unavailable' || AUTH_STATE === 'error'){ pageWorkspaceDown(app); return; }
@@ -1475,19 +1497,19 @@ function route(){
 
   const s = session();
   const guard = (need)=>{ // returns true if allowed to stay
-    if(!s){ history.replaceState({},'',BASE+'/login'); renderLogin(app, p); return false; }
+    if(!s){ replaceUrl(BASE+'/login'); renderLogin(app, p); return false; }
     if(s.role==='internal') return true;            // staff may view any workspace
-    if(s.role!==need){ history.replaceState({},'',BASE+roleHome(s.role)); route(); return false; }
+    if(s.role!==need){ replaceUrl(BASE+roleHome(s.role)); route(); return false; }
     return true;
   };
-  if(p.startsWith('/corporate')){ if(guard('corporate')) renderPortal(app, p); return; }
+  if(p === '/corporate' || p.startsWith('/corporate/')){ if(guard('corporate')) renderPortal(app, p); return; }
   if(p.startsWith('/command-center')){
-    if(!s){ history.replaceState({},'',BASE+'/login'); renderLogin(app, p); return; }
-    if(s.role!=='internal'){ history.replaceState({},'',BASE+roleHome(s.role)); return route(); }
+    if(!s){ replaceUrl(BASE+'/login'); renderLogin(app, p); return; }
+    if(s.role!=='internal'){ replaceUrl(BASE+roleHome(s.role)); return route(); }
     renderCC(app, p); return;
   }
   if(p==='/agent' || p.startsWith('/agent/')){ if(guard('agent')) renderAgentPortal(app, p); return; }
-  if(p === '/login'){ if(s){ history.replaceState({},'',BASE+roleHome(s.role)); return route(); } renderLogin(app); return; }
+  if(p === '/login'){ if(s){ replaceUrl(BASE+roleHome(s.role)); return route(); } renderLogin(app); return; }
   renderPublic(app, p);
 }
 function roleHome(role){ return role==='internal' ? '/command-center' : (role==='agent' ? '/agent' : '/corporate'); }
@@ -3889,8 +3911,8 @@ function ccUser(){
 function renderCC(app, p){
   const sub = p.replace('/command-center','') || '/';
   const v = viewAs();
-  if(v==='corporate'){ history.replaceState({},'',BASE+'/corporate'); return route(); }
-  if(v==='agent'){ history.replaceState({},'',BASE+'/agent'); return route(); }
+  if(v==='corporate'){ replaceUrl(BASE+'/corporate'); return route(); }
+  if(v==='agent'){ replaceUrl(BASE+'/agent'); return route(); }
   const me = ccUser();
   const openTasks = (S.tasks||[]).filter(t=>!t.done).length;
   const unreadTh = (S.threads||[]).filter(t=>t.unread).length;
@@ -7753,7 +7775,7 @@ function ccIntegrations(){
 let AUTH_STATE = 'pending';
 
 function isPortalPath(p){
-  return p.startsWith('/corporate') || p.startsWith('/command-center')
+  return p === '/corporate' || p.startsWith('/corporate/') || p.startsWith('/command-center')
       || p === '/agent' || p.startsWith('/agent/') || p === '/login'
       || p.startsWith('/e/') || p.startsWith('/journey/');
 }
