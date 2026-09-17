@@ -117,6 +117,19 @@ h1,h2,h3,h4{line-height:1.15;font-weight:800;letter-spacing:-.015em;color:var(--
 .hero::before{content:'';position:absolute;inset:0;background-image:radial-gradient(circle at 1px 1px, rgba(255,255,255,.08) 1px, transparent 0);background-size:26px 26px;opacity:.6}
 .hero-grid{display:none}
 .hero-ghost{position:absolute;left:50%;bottom:-24px;transform:translateX(-50%);font-size:clamp(64px,9vw,132px);font-weight:800;letter-spacing:-.02em;color:transparent;-webkit-text-stroke:1px rgba(255,255,255,.10);white-space:nowrap;pointer-events:none;z-index:0;user-select:none}
+
+/* ---------- brand band (closing signature banner) ---------- */
+.brand-band{position:relative;background:linear-gradient(160deg,var(--navy),var(--midnight));overflow:hidden;padding-top:34px}
+.brand-band::before{content:'';position:absolute;inset:0;background-image:radial-gradient(circle at 1px 1px, rgba(255,255,255,.08) 1px, transparent 0);background-size:26px 26px;opacity:.6}
+.bb-nav{position:relative;z-index:2;display:flex;align-items:center;justify-content:space-between;gap:20px;flex-wrap:wrap;padding-bottom:10px}
+.bb-nav nav{display:flex;gap:28px;flex-wrap:wrap}
+.bb-nav nav a{color:rgba(255,255,255,.66);font-size:14px;font-weight:600}
+.bb-nav nav a:hover{color:#fff}
+.bb-social{display:flex;gap:10px}
+.bb-social a{width:38px;height:38px;border-radius:50%;border:1.5px solid rgba(255,255,255,.32);display:flex;align-items:center;justify-content:center;color:#fff;font-size:13px;font-weight:700;flex:none}
+.bb-social a:hover{border-color:#fff;background:rgba(255,255,255,.08)}
+.bb-ghost{position:relative;z-index:1;text-align:center;overflow:hidden;padding:4px 0 0;line-height:.92}
+.bb-ghost span{display:inline-block;font-size:clamp(34px,7vw,118px);font-weight:800;letter-spacing:-.01em;color:transparent;-webkit-text-stroke:1.5px rgba(255,255,255,.14);white-space:nowrap;user-select:none}
 .hero h1{color:#fff;font-size:clamp(36px,5vw,58px);line-height:1.06;letter-spacing:-.02em}
 .hero h1 .gold{color:#9FC1F0}
 .hero .lede{color:rgba(255,255,255,.68)}
@@ -1734,7 +1747,25 @@ function pubFooter(){
       </div>
     </div>
     <style>@media(max-width:820px){#footgrid{grid-template-columns:1fr 1fr!important}}</style>
-  </footer>`;
+  </footer>
+  <div class="brand-band">
+    <div class="wrap bb-nav">
+      ${logoMark(30, true)}
+      <nav aria-label="Footer">
+        <a href="/how-it-works" data-nav>How It Works</a>
+        <a href="/corporate-partners" data-nav>Corporate Partners</a>
+        <a href="/direct-relocation" data-nav>Direct Relocation</a>
+        <a href="/agent-network" data-nav>Agent Network</a>
+        <a href="/contact" data-nav>Contact</a>
+      </nav>
+      <div class="bb-social">
+        <a href="#" onclick="event.preventDefault();toast('Prototype','Social links coming soon.')" aria-label="Facebook">f</a>
+        <a href="#" onclick="event.preventDefault();toast('Prototype','Social links coming soon.')" aria-label="LinkedIn">in</a>
+        <a href="#" onclick="event.preventDefault();toast('Prototype','Social links coming soon.')" aria-label="Instagram">IG</a>
+      </div>
+    </div>
+    <div class="bb-ghost"><span>ARRIVAL RELOCATION</span></div>
+  </div>`;
 }
 
 function renderPublic(app, p){
