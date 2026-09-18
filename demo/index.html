@@ -448,10 +448,10 @@ function ic(name, cls){ return `<svg class="ic ${cls||''}" viewBox="0 0 24 24" a
  * lockup has to sit on NAVY in several places (report sidebar, portal headers)
  * where the supplied white-background JPG would render as a white box.
  *
- * Aspects are fixed by the artwork: lockup 1000:291, mark 586:512. Derive the
+ * Aspects are fixed by the artwork: lockup 1000:291, mark 255:291. Derive the
  * width from the height so neither ever squashes.
  */
-const LOGO_AR = 1000/291, MARK_AR = 586/512;
+const LOGO_AR = 1000/291, MARK_AR = 255/291;
 function logoMark(size, light){
   return `<img src="/img/mark${light?'-light':''}.png" alt="" aria-hidden="true"
     width="${Math.round(size*MARK_AR)}" height="${size}"

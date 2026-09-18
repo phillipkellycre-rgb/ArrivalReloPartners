@@ -13,12 +13,11 @@ Relocation Partners. Single-file SPA (`index.html`), backed by Supabase
       supabase-js.min.js  @supabase/supabase-js 2.58.0 UMD build, pinned and
                           hash-verified (sha256 in the comment above the
                           <script> tag in index.html)
-    img/                  drop the four brand assets here (not included):
-                          logo.png, logo-light.png, mark.png, mark-light.png
+    img/                  the four brand assets: logo.png, logo-light.png,
+                          mark.png, mark-light.png
     demo/vendor/, demo/img/   demo/ is served from its own directory (`serve -s
                           demo`), so it keeps its own copies of vendor/ and
-                          img/ rather than reading the ones above — copy the
-                          same four logo files into demo/img/ too
+                          img/ rather than reading the ones above
     migrations/
       001_transactions_invoicing.sql   run once in the Supabase SQL editor
     docs/
@@ -32,10 +31,8 @@ Relocation Partners. Single-file SPA (`index.html`), backed by Supabase
     npm start        # serves index.html at http://localhost:3000, SPA routing on
     npm run demo      # serves demo/index.html instead
 
-The app needs `vendor/supabase-js.min.js` (included) and the four logo files
-in `img/` (not included — copy them from the current deployment). Without the
-logos every portal still works, just with a broken image where the lockup
-belongs.
+The app needs `vendor/supabase-js.min.js` and the four logo files in `img/`
+(both included).
 
 ## Deploying
 
@@ -102,8 +99,6 @@ Against `docs/ISSUES.md`, the findings from reading the handed-off source:
 - **`notWired()` buttons** (ISSUES.md #9) — twelve buttons that honestly
   report "not connected yet" rather than pretending to work. Left as-is;
   they point at real, known gaps rather than broken promises.
-- **Brand assets.** `img/` needs `logo.png`, `logo-light.png`, `mark.png`,
-  `mark-light.png` copied in from the current deployment.
 - **RLS / schema verification.** `migrations/001_transactions_invoicing.sql`
   assumes column and policy names described in the original patch; review
   against your actual schema before running it against production.
