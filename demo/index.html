@@ -6842,54 +6842,111 @@ function mrOpenCount(){ return (S.marketReports||[])
 /* =========================================================
    AI MARKET REPORT, secure recipient view + methodology
    ========================================================= */
-/* Per-category colour system, mirrors the reference's colourful icon row */
-const MR_CAT_COLOR = {
-  housing:'#C05B3E', job:'#2E6DB4', commute:'#1F9E8C', schools:'#5A63C4', taxes:'#5F7085',
-  lifestyle:'#3F9E63', airport:'#2F9BD1', climate:'#E0A02C', healthcare:'#D24E54', safety:'#2E7D6B',
-  hist:'#3F9E63', savings:'#B98A2E'
-};
 function mrScoreColor(v){ return v>=76?'#1F7A44':v>=62?'#B08636':'#B0533C'; }
 function mrHex(hex,a){ const n=parseInt(hex.slice(1),16); return `rgba(${n>>16&255},${n>>8&255},${n&255},${a})`; }
 
 const MR_CSS = `
-.mr-wrap{min-height:100vh;background:#E7EBF1;padding:24px 14px 60px;font-family:'Inter',system-ui,sans-serif}
-.mr-page{max-width:1080px;margin:0 auto;background:#fff;border-radius:16px;overflow:hidden;box-shadow:0 30px 80px rgba(19,41,75,.24)}
-.mr-head{display:grid;grid-template-columns:222px 1fr}
-.mr-brand{background:linear-gradient(164deg,#0A1730 0%,#112a4e 55%,#173861 100%);color:#fff;padding:26px 22px;display:flex;flex-direction:column;gap:15px}
-.mr-brand .mr-wordmark{font-family:'Playfair Display',Georgia,serif;font-size:27px;font-weight:800;line-height:1.08;letter-spacing:.01em}
-.mr-brand .mr-tag{font-size:12px;color:#E4C579;line-height:1.5;font-weight:500}
-.mr-glance{border-top:1px solid rgba(255,255,255,.13);border-bottom:1px solid rgba(255,255,255,.13);padding:11px 0;display:flex;flex-direction:column;gap:9px}
-.mr-glance .g{display:flex;justify-content:space-between;align-items:baseline;gap:8px}
-.mr-glance .gl{font-size:9.5px;letter-spacing:.05em;color:#93A3C0;text-transform:uppercase}
-.mr-glance .gv{font-size:13px;font-weight:800;color:#fff}
-.mr-glance .gv.gold{color:#9CC0EE}
-.mr-main{padding:16px 18px 2px;display:flex;flex-direction:column;gap:12px;min-width:0}
-.mr-body2{padding:12px 18px 20px;display:flex;flex-direction:column;gap:14px;min-width:0}
-.mr-card{background:#fff;border:1px solid #E4E9F1;border-radius:13px;padding:15px 17px;box-shadow:0 1px 2px rgba(19,41,75,.04)}
-.mr-h{font-family:'Inter';font-size:11.5px;font-weight:800;letter-spacing:.11em;color:#13294B;display:flex;align-items:center;gap:8px;text-transform:uppercase}
-.mr-h::before{content:"";width:15px;height:3px;border-radius:3px;background:linear-gradient(90deg,#2C5AA0,#9CC0EE);flex:none}
+.mr-wrap{min-height:100vh;background:#F0F3F8;padding:24px 14px 60px;font-family:'Plus Jakarta Sans',system-ui,sans-serif}
+.mr-page{max-width:1080px;margin:0 auto;background:#fff;border-radius:26px;overflow:hidden;box-shadow:0 34px 90px rgba(10,23,48,.22);position:relative}
+.mr-actions{max-width:1080px;margin:0 auto 14px;display:flex;gap:8px;justify-content:flex-end;flex-wrap:wrap}
+
+.mr-hero{background:radial-gradient(1100px 460px at 12% -10%,rgba(156,192,238,.16),transparent 60%),linear-gradient(160deg,#0A1730 0%,#112A4E 55%,#1B3E6C 100%);color:#fff;padding:40px 40px 30px;position:relative;overflow:hidden}
+.mr-hero-top{display:flex;justify-content:space-between;align-items:flex-start;gap:16px;flex-wrap:wrap;position:relative;z-index:1}
+.mr-hero-top img{display:block;height:30px;width:auto}
+.mr-hero-word{font-size:10.5px;font-weight:800;letter-spacing:.14em;color:#E4C579;text-transform:uppercase;margin-top:6px}
+.mr-prep{text-align:right;font-size:11px;color:rgba(255,255,255,.55)}
+.mr-prep b{color:#fff;display:block;font-size:13px;font-weight:700}
+.mr-route{display:flex;align-items:center;gap:14px;margin-top:26px;flex-wrap:wrap;position:relative;z-index:1}
+.mr-route .c{font-size:clamp(22px,3.2vw,32px);font-weight:800;line-height:1.05;font-family:'Playfair Display',Georgia,serif}
+.mr-route .c small{display:block;font-size:10.5px;font-weight:700;color:#9CC0EE;letter-spacing:.08em;text-transform:uppercase;margin-bottom:3px;font-family:'Plus Jakarta Sans'}
+.mr-route .arrow{color:#E4C579;flex:none;opacity:.85}
+.mr-sub{margin-top:10px;color:rgba(255,255,255,.66);font-size:12.5px;max-width:640px;position:relative;z-index:1;line-height:1.55}
+.mr-chips2{display:flex;gap:8px;margin-top:14px;flex-wrap:wrap;position:relative;z-index:1}
+.mr-proto{display:inline-flex;align-items:center;gap:6px;background:rgba(255,255,255,.09);border:1px solid rgba(255,255,255,.16);color:#fff;font-size:11px;font-weight:600;padding:6px 13px;border-radius:999px}
+.mr-proto b{color:#E4C579;font-weight:800}
+.mr-proto.sample{background:rgba(228,197,121,.14);border-color:rgba(228,197,121,.32)}
+.mr-proto.sample b{color:#F0DCA0}
+.mr-hero-grid{display:flex;flex-wrap:wrap;margin-top:24px;border-top:1px solid rgba(255,255,255,.13);position:relative;z-index:1}
+.mr-hero-grid>div{padding:16px 22px 4px 0;flex:none}
+.mr-hero-grid>div:not(:first-child){padding-left:22px;border-left:1px solid rgba(255,255,255,.13)}
+.mr-score-box{display:flex;align-items:center;gap:14px}
+.mr-score-desc b{display:block;font-size:13px}
+.mr-score-desc span{font-size:11px;color:rgba(255,255,255,.58)}
+.mr-stat{text-align:center;display:flex;flex-direction:column;justify-content:center}
+.mr-stat b{font-size:20px;font-weight:800;color:#E4C579}
+.mr-stat span{font-size:9.5px;color:rgba(255,255,255,.55);letter-spacing:.05em;text-transform:uppercase;margin-top:2px}
+@media(max-width:760px){
+  .mr-hero{padding:30px 20px 22px}
+  .mr-hero-grid{flex-direction:column}
+  .mr-hero-grid>div{padding:12px 0!important;border-left:none!important;border-top:1px solid rgba(255,255,255,.13)}
+  .mr-hero-grid>div:first-child{border-top:none}
+  .mr-stat{flex-direction:row;justify-content:space-between;text-align:left}
+}
+
+.mr-body2{padding:34px 40px 8px;display:flex;flex-direction:column;gap:30px;min-width:0}
+@media(max-width:760px){.mr-body2{padding:24px 20px 8px}}
+.mr-h{font-family:'Plus Jakarta Sans';font-size:11px;font-weight:800;letter-spacing:.1em;color:#13294B;display:flex;align-items:center;gap:8px;text-transform:uppercase}
+.mr-h::before{content:"";width:15px;height:3px;border-radius:3px;background:linear-gradient(90deg,#2C5AA0,#E4C579);flex:none}
+.mr-section-head{display:flex;justify-content:space-between;align-items:baseline;margin-bottom:13px;flex-wrap:wrap;gap:6px}
+.mr-section-head p{font-size:11.5px;color:#7C8798}
 .mr-serif{font-family:'Playfair Display',Georgia,serif;color:#13294B}
 .mr-tiny{font-size:10px;color:#7C8798}.mr-sm{font-size:12px;color:#39445A;line-height:1.6}
 .mr-navy{color:#13294B}.mr-gold{color:#B98A2E}.mr-teal{color:#2E7D6B}
-.mr-grid3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:14px}
-.mr-grid2{display:grid;grid-template-columns:1.15fr 1fr;gap:14px}
+
+.mr-card{border:1px solid #E4E9F1;border-radius:18px;padding:18px 19px;background:#fff}
+.mr-info-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;padding:14px 17px}
+@media(max-width:640px){.mr-info-grid{grid-template-columns:1fr 1fr}}
+.mr-exec{padding:0;overflow:hidden;display:grid;grid-template-columns:1.28fr 1fr}
+@media(max-width:700px){.mr-exec{grid-template-columns:1fr}}
+
 .mr-tiles{display:grid;grid-template-columns:repeat(6,1fr);gap:10px}
-.mr-tile{border:1px solid #E7ECF3;border-radius:12px;padding:13px 6px 12px;text-align:center;background:linear-gradient(180deg,#fff,#F9FBFD)}
-.mr-tile b{font-size:23px;font-family:'Inter';font-weight:800;display:block;margin-top:6px;letter-spacing:-.02em}
-.mr-tile .mr-lab{font-size:9.5px;font-weight:700;color:#54627A;margin-top:7px;line-height:1.25;min-height:23px;display:flex;align-items:center;justify-content:center}
-.mr-tile .mr-ti{width:38px;height:38px;border-radius:11px;display:inline-flex;align-items:center;justify-content:center;margin:0 auto}
-.mr-tile .mr-ti svg{width:21px;height:21px}
-.mr-row{display:flex;justify-content:space-between;gap:10px;padding:6px 0;border-bottom:1px solid #EEF1F7;font-size:12px}
+@media(max-width:900px){.mr-tiles{grid-template-columns:repeat(3,1fr)}}
+@media(max-width:520px){.mr-tiles{grid-template-columns:repeat(2,1fr)}}
+.mr-tile{border:1px solid #E4E9F1;border-radius:16px;padding:15px 8px 13px;text-align:center;background:linear-gradient(180deg,#fff,#FAFBFD);transition:transform .15s,box-shadow .15s}
+.mr-tile:hover{transform:translateY(-2px);box-shadow:0 10px 24px rgba(19,41,75,.08)}
+.mr-tile .mr-ti{width:34px;height:34px;border-radius:10px;display:flex;align-items:center;justify-content:center;margin:0 auto}
+.mr-tile .mr-ti svg{width:18px;height:18px}
+.mr-tile b{display:block;font-size:22px;font-weight:800;margin-top:9px;font-family:'Plus Jakarta Sans';letter-spacing:-.02em}
+.mr-tile .mr-lab{font-size:9.5px;font-weight:700;color:#5B6779;margin-top:5px;line-height:1.25;min-height:22px;display:flex;align-items:center;justify-content:center}
+
+.mr-grid2{display:grid;grid-template-columns:1.28fr 1fr;gap:14px}
+.mr-grid3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:14px}
+@media(max-width:840px){.mr-grid2,.mr-grid3{grid-template-columns:1fr}}
+.mr-row{display:flex;justify-content:space-between;gap:10px;padding:7px 0;border-bottom:1px solid #EEF1F7;font-size:12px}
+.mr-row:last-child{border-bottom:none}
 .mr-row span:first-child{color:#5B6779}.mr-row b{color:#13294B;font-weight:700;text-align:right}
 .mr-bar{height:7px;border-radius:5px;background:#EDF0F6;overflow:hidden}.mr-bar i{display:block;height:100%;border-radius:5px;background:linear-gradient(90deg,#2C5AA0,#E0B454)}
 .mr-badge{display:inline-block;font-size:9.5px;font-weight:700;letter-spacing:.05em;padding:2px 8px;border-radius:20px}
-.mr-rank{width:30px;height:30px;border-radius:50%;flex:none;display:flex;align-items:center;justify-content:center;font-weight:800;font-size:12px;background:#13294B;color:#fff}
-.mr-sch{width:38px;height:38px;border-radius:50%;flex:none;display:flex;flex-direction:column;align-items:center;justify-content:center;background:#EAF5EF;color:#1F7A44;line-height:1}
-.mr-proto{background:#F4F1E7;color:#7A6A3E;font-size:10.5px;letter-spacing:.02em;padding:7px 13px;border-radius:8px;border:1px solid #E7DFC6}
-.mr-proto.live{background:#EAF6EF;color:#1F6B44;border-color:#CBE7D5}
-.mr-proto a{color:#B98A2E;text-decoration:underline}
-.mr-actions{max-width:1080px;margin:0 auto 14px;display:flex;gap:8px;justify-content:flex-end;flex-wrap:wrap}
-@media(max-width:840px){.mr-head{grid-template-columns:1fr}.mr-grid3,.mr-grid2,.mr-tiles{grid-template-columns:1fr 1fr}}
+.mr-rank{width:28px;height:28px;border-radius:50%;flex:none;display:flex;align-items:center;justify-content:center;font-weight:800;font-size:11.5px;background:#13294B;color:#fff}
+.mr-rank.top{background:linear-gradient(150deg,#2C5AA0,#B98A2E)}
+.mr-sch{width:36px;height:36px;border-radius:50%;flex:none;display:flex;flex-direction:column;align-items:center;justify-content:center;background:#EAF5EF;color:#1F7A44;line-height:1}
+.mr-proto2{background:#FBF3E4;color:#8A6516;border:1px solid #E7D4A8;font-size:11px;padding:9px 14px;border-radius:10px}
+.mr-proto2.live{background:#EAF6EF;color:#1F6B44;border-color:#CBE7D5}
+
+.mr-recs{display:flex;flex-direction:column;gap:11px}
+.mr-rec{display:flex;gap:10px;align-items:flex-start}
+.mr-rec .dot{width:25px;height:25px;border-radius:8px;background:rgba(228,197,121,.2);color:#B98A2E;display:flex;align-items:center;justify-content:center;flex:none}
+.mr-rec .dot svg{width:13px;height:13px}
+
+.mr-close{margin-top:6px;background:linear-gradient(160deg,#0A1730,#152C51);color:#fff;padding:30px 40px;position:relative;overflow:hidden}
+@media(max-width:760px){.mr-close{padding:26px 20px}}
+.mr-ghost{position:absolute;left:0;right:0;bottom:-8px;text-align:center;font-family:'Playfair Display',serif;font-weight:800;font-size:clamp(28px,6.6vw,78px);color:rgba(255,255,255,.045);letter-spacing:.02em;pointer-events:none;white-space:nowrap;overflow:hidden;width:100%;line-height:1}
+.mr-close-inner{position:relative;z-index:1;display:flex;align-items:center;gap:18px;flex-wrap:wrap}
+.mr-qr{width:68px;height:68px;border-radius:9px;background:#fff;flex:none;display:flex;align-items:center;justify-content:center;padding:5px;overflow:hidden}
+.mr-qr svg{width:100%;height:100%}
+.mr-close-text{flex:1;min-width:200px}
+.mr-close-text b{font-size:14px;display:block}
+.mr-close-text span{font-size:12px;color:rgba(255,255,255,.6);display:block;margin-top:3px}
+.mr-close-meta{font-size:10.5px;color:rgba(255,255,255,.45);text-align:right}
+
+.mr-legend{display:flex;justify-content:center;gap:10px;padding:16px 0 0;flex-wrap:wrap}
+.mr-legend .k{width:8px;height:8px;border-radius:50%;display:inline-block;margin-right:5px}
+.mr-legend span.l{font-size:10.5px;color:#7C8798}
+
+.mr-footer-logo{display:block;text-align:center;padding:24px 20px 8px;border-top:1px solid #E6EBF3;margin-top:4px}
+.mr-footer-logo img{width:100%;max-width:220px;height:auto;display:inline-block}
+.mr-legal{font-size:10px;color:#7C8798;text-align:center;padding:0 20px 26px;line-height:1.5}
+
 @media print{
   @page{size:8.5in 12.75in;margin:0}
   body{background:#fff}
@@ -6917,22 +6974,24 @@ const MR_ICONS = {
 };
 function MR_ICON(k){ return `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">${MR_ICONS[k]||MR_ICONS.housing}</svg>`; }
 
-function mrGauge(val, color){
-  color = color || '#2E7D6B';
-  const pct = Math.max(0,Math.min(1,val/100));
-  const r=36, c=Math.PI*r, off=c*(1-pct);
-  return `<svg viewBox="0 0 96 58" style="width:112px">
-      <defs><linearGradient id="mrg${val}" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="${color}" stop-opacity=".7"/><stop offset="1" stop-color="${color}"/></linearGradient></defs>
-      <path d="M10 50 A 38 38 0 0 1 86 50" fill="none" stroke="#EAEEF4" stroke-width="8.5" stroke-linecap="round"/>
-      <path d="M10 50 A 38 38 0 0 1 86 50" fill="none" stroke="url(#mrg${val})" stroke-width="8.5" stroke-linecap="round" stroke-dasharray="${c.toFixed(1)}" stroke-dashoffset="${off.toFixed(1)}"/>
-      <text x="48" y="46" text-anchor="middle" font-size="25" font-weight="800" fill="#13294B" font-family="Inter">${val}</text>
-    </svg>`;
-}
-function mrStar(val, color){
-  return `<div style="display:flex;align-items:center;justify-content:center;gap:8px">
-      <svg viewBox="0 0 24 24" width="27" height="27" fill="#2C5AA0"><path d="M12 2.4l2.75 5.98 6.55.72-4.9 4.4 1.35 6.42L12 16.9l-5.7 3.02 1.35-6.42-4.9-4.4 6.55-.72z"/></svg>
-      <span style="font-size:31px;font-weight:800;color:#13294B;line-height:1;font-family:Inter">${val}<span style="font-size:16px">%</span></span>
-    </div>`;
+/* A full ring gauge on the dark hero, used for both the overall relocation
+   score and the confidence read-out (same visual language, two sizes). */
+function mrGauge(val, size, label){
+  size = size || 104;
+  const track = size*0.086, r = size/2 - track/2 - 2, c = 2*Math.PI*r;
+  const pct = Math.max(0,Math.min(1,val/100)), off = c*(1-pct);
+  const gid = 'mrg'+Math.round(val*137+size), cx = size/2;
+  return `<div style="position:relative;width:${size}px;height:${size}px;flex:none">
+    <svg viewBox="0 0 ${size} ${size}" style="width:100%;height:100%;transform:rotate(-90deg)">
+      <circle cx="${cx}" cy="${cx}" r="${r}" fill="none" stroke="rgba(255,255,255,.16)" stroke-width="${track}"/>
+      <circle cx="${cx}" cy="${cx}" r="${r}" fill="none" stroke="url(#${gid})" stroke-width="${track}" stroke-linecap="round" stroke-dasharray="${c.toFixed(1)}" stroke-dashoffset="${off.toFixed(1)}"/>
+      <defs><linearGradient id="${gid}" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#9CC0EE"/><stop offset="1" stop-color="#E4C579"/></linearGradient></defs>
+    </svg>
+    <div style="position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;padding:0 4px">
+      <b style="font-size:${Math.round(size*.29)}px;font-weight:800;color:#fff;line-height:1;font-family:'Plus Jakarta Sans'">${val}</b>
+      <span style="font-size:${Math.max(8,Math.round(size*.09))}px;color:rgba(255,255,255,.55);letter-spacing:.05em;text-transform:uppercase;margin-top:2px">${label||'of 100'}</span>
+    </div>
+  </div>`;
 }
 function mrSkyline(city, label){
   // Deterministic per-city variation without Math.random (banned in this env)
@@ -7031,16 +7090,16 @@ function mrTrendChart(d){
 function mrScoreTiles(rep){
   const sc = rep.scores;
   const tile = (color, iconKey, label, bodyHTML) =>
-    `<div class="mr-tile"><span class="mr-ti" style="background:${mrHex(color,.13)};color:${color}">${MR_ICON(iconKey)}</span><div class="mr-lab">${label}</div>${bodyHTML}</div>`;
+    `<div class="mr-tile"><span class="mr-ti" style="background:${mrHex(color,.12)};color:${color}">${MR_ICON(iconKey)}</span><div class="mr-lab">${label}</div>${bodyHTML}</div>`;
   const tiles = MR_CAT_KEYS.map(k=>{
-    const c = sc.cats[k], col = MR_CAT_COLOR[k]||'#13294B';
-    if(c.blocked) return tile(col, k, c.label, `<b style="font-size:12.5px;color:#B08636;line-height:1.2">Pending<br><span style="font-weight:600;font-size:8.5px;color:#8A94A6">data provider</span></b>`);
-    return tile(col, k, c.label, `<b style="color:${mrScoreColor(c.score)}">${c.score}</b>`);
+    const c = sc.cats[k];
+    if(c.blocked) return tile('#B08636', k, c.label, `<b style="font-size:12px;color:#B08636;line-height:1.2">Pending<br><span style="font-weight:600;font-size:8.5px;color:#8A94A6">data provider</span></b>`);
+    return tile(mrScoreColor(c.score), k, c.label, `<b style="color:${mrScoreColor(c.score)}">${c.score}</b>`);
   });
-  tiles.push(tile(MR_CAT_COLOR.hist, 'hist', '5-Yr Historical Appreciation', `<b style="font-size:18px;color:#1F7A44">+${sc.hist5}%</b><div class="mr-tiny">historical</div>`));
+  tiles.push(tile('#1F7A44', 'hist', '5-Yr Historical Appreciation', `<b style="font-size:18px;color:#1F7A44">+${sc.hist5}%</b><div class="mr-tiny">historical</div>`));
   tiles.push(sc.savings!=null
-    ? tile(MR_CAT_COLOR.savings, 'savings', 'Est. Monthly Difference', `<b style="font-size:16px;color:${sc.savings>=0?'#1F7A44':'#B0533C'}">${fmtMoney(Math.abs(sc.savings))}</b><div class="mr-tiny">${sc.savings>=0?'lower':'higher'} vs origin</div>`)
-    : tile(MR_CAT_COLOR.savings, 'savings', 'Est. Monthly Difference', `<b style="font-size:11px;color:#B08636">Unavailable</b><div class="mr-tiny">origin data missing</div>`));
+    ? tile(sc.savings>=0?'#1F7A44':'#B0533C', 'savings', 'Est. Monthly Difference', `<b style="font-size:16px;color:${sc.savings>=0?'#1F7A44':'#B0533C'}">${fmtMoney(Math.abs(sc.savings))}</b><div class="mr-tiny">${sc.savings>=0?'lower':'higher'} vs origin</div>`)
+    : tile('#B08636', 'savings', 'Est. Monthly Difference', `<b style="font-size:11px;color:#B08636">Unavailable</b><div class="mr-tiny">origin data missing</div>`));
   return tiles.join('');
 }
 
@@ -7056,9 +7115,6 @@ function mrReportHTML(rep, opts){
     ({h, match: mrClamp(100 - 2.2*Math.max(0, h.min - 8))})
   ).sort((a,b)=>b.match-a.match);
   const ph = rep.live && rep.live.photo;
-  const railArt = ph
-    ? `<img src="${esc(ph.thumb||ph.url)}" alt="${esc(inp.dest)}" style="width:100%;height:100%;object-fit:cover;display:block" referrerpolicy="no-referrer">`
-    : mrSkyline(inp.dest.split(',')[0], false);
   const bigArt = ph
     ? `<div style="position:relative;width:100%;height:100%"><img src="${esc(ph.url)}" alt="${esc(inp.dest)} skyline" style="width:100%;height:100%;object-fit:cover;display:block" referrerpolicy="no-referrer">
         <div style="position:absolute;left:0;bottom:0;right:0;background:linear-gradient(transparent,rgba(11,24,48,.82));padding:16px 14px 8px">
@@ -7075,6 +7131,8 @@ function mrReportHTML(rep, opts){
   ['childcare','insurance','utilities'].forEach(k=>{ if(inp[k]) fin.push([k[0].toUpperCase()+k.slice(1)+' (user supplied)', fmtMoney(inp[k])+' /mo']); });
   if(sc.savings!=null) fin.push(['<b>Est. monthly difference</b>', `<b style="color:${sc.savings>=0?'#2E7D6B':'#A8432F'}">${fmtMoney(Math.abs(sc.savings))} /mo ${sc.savings>=0?'lower':'higher'}</b>`]);
 
+  const colPct = o ? (d.rpp<o.rpp?'−':'+')+Math.abs(((d.rpp-o.rpp)/o.rpp*100)).toFixed(1)+'%' : null;
+
   return `<style>${MR_CSS}</style>
   <div class="mr-wrap">
     ${opts.bare?'':`<div class="mr-actions">
@@ -7087,78 +7145,82 @@ function mrReportHTML(rep, opts){
         <button class="btn btn-outline btn-sm" onclick="copyLink('/report/${rep.token}')">${ic('link','ic-sm')} Copy link to share</button>
     </div>`}
     <div class="mr-page">
-      <div class="mr-head">
-        <aside class="mr-brand">
-          <!-- The supplied lockup, not a reconstruction. The wordmark used to be
-               set in CSS here, which never matched the real letterforms. -->
-          <a href="/" data-nav style="text-align:center;text-decoration:none;display:block" aria-label="Arrival Relocation Partners, home">
-            <img src="/img/logo-light.png" alt="Arrival Relocation Partners" style="width:100%;max-width:186px;height:auto;display:block;margin:0 auto">
-          </a>
-          <div style="margin-top:14px">
-            <div style="font-family:'Inter';font-size:21px;font-weight:800;line-height:1.22;color:#fff;letter-spacing:.015em">AI MARKET<br>REPORT<span style="font-size:11px;vertical-align:super;font-weight:700">™</span></div>
-            <div style="width:44px;height:3px;border-radius:3px;background:#2C5AA0;margin:10px 0 12px"></div>
-            <p style="font-size:13px;color:#E4C579;line-height:1.5;font-weight:500;margin:0">The smartest way to choose your next city.</p>
+      <div class="mr-hero">
+        <div class="mr-hero-top">
+          <div>
+            <a href="/" data-nav aria-label="Arrival Relocation Partners, home" style="display:block;text-decoration:none">
+              <img src="/img/logo-light.png" alt="Arrival Relocation Partners" style="height:26px;width:auto;display:block">
+            </a>
+            <div class="mr-hero-word">AI Market Report™</div>
           </div>
-          <div style="margin:auto -22px -26px;height:148px;overflow:hidden">${ph
-            ? `<img src="${esc(ph.thumb||ph.url)}" alt="${esc(inp.dest)} skyline" style="width:100%;height:100%;object-fit:cover;display:block" referrerpolicy="no-referrer">`
-            : mrSkyline(inp.dest.split(',')[0], false)}</div>
-        </aside>
-        <div class="mr-main">
-          <!-- A sample says so FIRST and unconditionally. This was an either/or:
-               any live photo or climate reading replaced the "fictional" notice
-               with a green LIVE DATA banner, so the worked sample presented an
-               invented employee, employer and $362,000 salary as though it were a
-               real client's report. The two facts are independent: a sample can
-               carry a real photo and still be a sample. -->
-          ${rep.sample ? `<div class="mr-proto" style="background:#FBF3E4;color:#8A6516;border-color:#E7D4A8">
-              <b>● FICTIONAL WORKED SAMPLE</b> &nbsp;An illustration of the format. The employee,
-              employer, salary and financial figures are invented and describe no real person.
-            </div>` : ''}
-          <div class="mr-proto ${(ph||climateLive)?'live':''}">${(ph||climateLive)
-            ? `<b>● LIVE DATA</b> &nbsp;Real ${[ph?'photo':null,climateLive?'climate readings':null].filter(Boolean).join(' and ')} for ${esc((rep.live.coords&&rep.live.coords.name)||inp.dest.split(',')[0])}, pulled by the Arrival Agent. Housing, jobs and taxes are shown as estimates.`
-            : `Reference figures only. Housing, jobs and taxes are estimates, not measurements for this city.`}</div>
+          <div class="mr-prep">Prepared for<b>${esc(inp.employee||'—')}</b>${esc(inp.company||'')}</div>
+        </div>
 
-          <div class="mr-card" style="display:grid;grid-template-columns:repeat(4,1fr);gap:12px;padding:13px 17px">
-            ${[['Prepared for',inp.employee],['Company',inp.company],['Position',inp.title],['Date generated',fmtD(rep.created)]].map(([l,v])=>`<div><div class="mr-tiny" style="letter-spacing:.04em;text-transform:uppercase;font-weight:700">${l}</div><b style="font-size:14.5px;color:#13294B;display:block;margin-top:2px">${esc(v||'—')}</b></div>`).join('')}
-          </div>
+        <div class="mr-route">
+          <div class="c"><small>Relocating from</small>${esc(inp.origin)}</div>
+          <span class="arrow">${ic('arrR')}</span>
+          <div class="c"><small>Destination</small>${esc(inp.dest)}</div>
+        </div>
+        <p class="mr-sub">${esc(inp.mode)} · ${inp.targetPrice?'target '+fmtMoney(inp.targetPrice):'no target set'} · ${inp.maxCommute} min max commute · ${inp.remoteDays} remote day${inp.remoteDays==1?'':'s'}/wk. Generated ${fmtD(rep.created)}.</p>
 
-          <div style="display:grid;grid-template-columns:1.6fr .82fr .82fr;gap:12px;align-items:stretch">
-            <div class="mr-card" style="display:flex;flex-direction:column;justify-content:center">
-              <div class="mr-tiny" style="letter-spacing:.04em;text-transform:uppercase;font-weight:700">Relocating from</div>
-              <div style="display:flex;align-items:center;gap:11px;margin-top:6px;flex-wrap:wrap">
-                <b class="mr-serif" style="font-size:21px;font-weight:700">${esc(inp.origin)}</b>
-                <span style="color:#B98A2E">${ic('arrR')}</span>
-                <b class="mr-serif" style="font-size:21px;font-weight:700">${esc(inp.dest)}</b>
-              </div>
-              <div class="mr-tiny" style="margin-top:7px">${esc(inp.mode)} &nbsp;·&nbsp; ${inp.targetPrice?'target '+fmtMoney(inp.targetPrice):'no target set'} &nbsp;·&nbsp; ${inp.maxCommute} min max commute &nbsp;·&nbsp; ${inp.remoteDays} remote day${inp.remoteDays==1?'':'s'}/wk</div>
-            </div>
-            <div class="mr-card" style="display:flex;flex-direction:column;align-items:center;justify-content:center;gap:7px">
-              <div class="mr-tiny" style="font-weight:800;letter-spacing:.05em">CONFIDENCE</div>
-              ${mrStar(conf)}
-              <div class="mr-tiny" style="color:${conf>=88?'#1F7A44':conf>=70?'#B08636':'#B0533C'};font-weight:700">${mrConfLabel(conf)}</div>
-            </div>
-            <div class="mr-card" style="display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px">
-              <div class="mr-tiny" style="font-weight:800;letter-spacing:.05em">RELOCATION SCORE</div>
+        <!-- A sample says so FIRST and unconditionally. This was an either/or:
+             any live photo or climate reading replaced the "fictional" notice
+             with a green LIVE DATA banner, so the worked sample presented an
+             invented employee, employer and $362,000 salary as though it were a
+             real client's report. The two facts are independent: a sample can
+             carry a real photo and still be a sample. -->
+        <div class="mr-chips2">
+          ${rep.sample ? `<span class="mr-proto sample"><b>● FICTIONAL WORKED SAMPLE</b> An illustration of the format, not a real person</span>` : ''}
+          <span class="mr-proto">${(ph||climateLive)
+            ? `<b>● LIVE DATA</b> Real ${[ph?'photo':null,climateLive?'climate readings':null].filter(Boolean).join(' and ')} for ${esc((rep.live.coords&&rep.live.coords.name)||inp.dest.split(',')[0])}`
+            : `Reference figures only, estimates not measurements`}</span>
+        </div>
+
+        <div class="mr-hero-grid">
+          <div>
+            <div class="mr-score-box">
               ${sc.overall==null
-                ? `<div style="text-align:center;padding:6px 4px"><div style="font-size:26px;font-weight:800;color:#B08636;line-height:1.1">Not scored</div>
-                   <div class="mr-tiny" style="margin-top:5px;max-width:190px">Only ${sc.eligibleCount} categor${sc.eligibleCount===1?'y has':'ies have'} verified data for this destination. An overall score needs at least 4, so none is shown rather than implying more certainty than we have.</div></div>`
-                : `${mrGauge(sc.overall, '#2C5AA0')}<div class="mr-tiny">of 100 · ${sc.eligibleCount} categories</div>`}
+                ? `<div style="width:104px;height:104px;border-radius:50%;border:2px dashed rgba(255,255,255,.28);display:flex;align-items:center;justify-content:center;text-align:center;padding:8px;flex:none"><span style="font-size:11px;font-weight:700;color:#E4C579">Not scored</span></div>`
+                : mrGauge(sc.overall, 104, 'of 100')}
+              <div class="mr-score-desc">
+                ${sc.overall==null
+                  ? `<b>Not enough verified data</b><span>Only ${sc.eligibleCount} categor${sc.eligibleCount===1?'y':'ies'} available, need at least 4</span>`
+                  : `<b>${sc.overall>=76?'Strong overall match':sc.overall>=62?'Good overall match':'Mixed overall match'}</b><span>${sc.eligibleCount} categories scored</span>`}
+              </div>
             </div>
           </div>
-
-          <div class="mr-card" style="padding:0;overflow:hidden;display:grid;grid-template-columns:1.28fr 1fr">
-            <div style="padding:15px 17px">
-              <div class="mr-h">Executive Summary</div>
-              <p class="mr-sm" style="margin-top:9px">${esc(rep.narr.exec)}</p>
+          <div>
+            <div class="mr-score-box">
+              ${mrGauge(conf, 78, 'confidence')}
+              <div class="mr-score-desc"><b>${mrConfLabel(conf)}</b><span>Based on data coverage</span></div>
             </div>
-            <div style="min-height:158px">${bigArt}</div>
           </div>
+          ${!sc.cats.commute.blocked?`<div class="mr-stat"><b>${sc.cats.commute.val} min</b><span>Avg. commute</span></div>`:''}
+          ${colPct?`<div class="mr-stat"><b>${colPct}</b><span>Cost vs. ${esc(inp.origin.split(',')[0])}</span></div>`:''}
         </div>
       </div>
+
       <div class="mr-body2">
+        <div class="mr-card mr-info-grid">
+          ${[['Prepared for',inp.employee],['Company',inp.company],['Position',inp.title],['Date generated',fmtD(rep.created)]].map(([l,v])=>`<div><div class="mr-tiny" style="letter-spacing:.04em;text-transform:uppercase;font-weight:700">${l}</div><b style="font-size:14.5px;color:#13294B;display:block;margin-top:2px">${esc(v||'—')}</b></div>`).join('')}
+        </div>
+
+        <div class="mr-card mr-exec">
+          <div style="padding:18px 19px">
+            <div class="mr-h">Executive Summary</div>
+            <p class="mr-sm" style="margin-top:9px">${esc(rep.narr.exec)}</p>
+          </div>
+          <div style="min-height:158px">${bigArt}</div>
+        </div>
+
         <div>
-          <div class="mr-h" style="margin-bottom:9px">Relocation Score Breakdown</div>
+          <div class="mr-section-head"><div class="mr-h">Relocation Score Breakdown</div><p>Scored against verified data where available; unscored categories are marked, never guessed.</p></div>
           <div class="mr-tiles">${mrScoreTiles(rep)}</div>
+          <div class="mr-legend">
+            <span><span class="k" style="background:#1F7A44"></span><span class="l">Strong (76+)</span></span>
+            <span><span class="k" style="background:#B08636"></span><span class="l">Moderate (62–75)</span></span>
+            <span><span class="k" style="background:#B0533C"></span><span class="l">Needs review (&lt;62)</span></span>
+          </div>
         </div>
 
         <div class="mr-grid3">
@@ -7213,8 +7275,8 @@ function mrReportHTML(rep, opts){
 
         <div class="mr-grid2" style="grid-template-columns:1fr">
           <div class="mr-card">
-            <div class="mr-h">PERSONALIZED RECOMMENDATIONS</div>
-            ${rep.narr.recs.length?rep.narr.recs.map(r=>`<div style="display:flex;gap:10px;margin-top:10px"><span style="flex:none;width:26px;height:26px;border-radius:8px;background:#F5EEDC;color:#B98A2E;display:inline-flex;align-items:center;justify-content:center">${ic('sparkle','ic-sm')}</span><p class="mr-sm">${esc(r)}</p></div>`).join(''):'<p class="mr-sm" style="margin-top:8px">No recommendations available for this profile.</p>'}
+            <div class="mr-h" style="margin-bottom:12px">PERSONALIZED RECOMMENDATIONS</div>
+            ${rep.narr.recs.length?`<div class="mr-recs">${rep.narr.recs.map(r=>`<div class="mr-rec"><span class="dot">${ic('sparkle','ic-sm')}</span><p class="mr-sm">${esc(r)}</p></div>`).join('')}</div>`:'<p class="mr-sm">No recommendations available for this profile.</p>'}
             <div class="mr-tiny" style="margin-top:10px">${esc(rep.narr.validation)}</div>
           </div>
           
@@ -7226,25 +7288,27 @@ function mrReportHTML(rep, opts){
 
         </div>
 
-        <div class="mr-card" style="background:#0E1F3A;border:none;color:#fff;display:flex;gap:16px;align-items:center;flex-wrap:wrap">
-          ${mrQR(url)}
-          <div style="flex:1;min-width:200px">
-            <b style="font-size:13px">Ready for the next step?</b>
-            <div class="mr-tiny" style="color:#AEBBD2;margin-top:3px">Your Arrival coordinator${inp.coordinator?`, ${esc(inp.coordinator)},`:''} is ready to walk through this report with you.</div>
+      </div>
+      <div class="mr-close">
+        <div class="mr-ghost">MARKET REPORT</div>
+        <div class="mr-close-inner">
+          <div class="mr-qr">${mrQR(url)}</div>
+          <div class="mr-close-text">
+            <b>Ready for the next step?</b>
+            <span>Your Arrival coordinator${inp.coordinator?`, ${esc(inp.coordinator)},`:''} is ready to walk through this report with you.</span>
             <!-- This card renders on REAL reports produced by "Try it live", so it
                  must not carry the seeded 555 number or a .example address. No
                  phone number is shown because Arrival has not supplied one. -->
-            <div class="mr-tiny" style="color:#AEBBD2;margin-top:6px">${ic('mail','ic-sm')} <a href="mailto:${ARRIVAL_CONTACT_EMAIL}" style="color:#9CC0EE">${ARRIVAL_CONTACT_EMAIL}</a></div>
+            <span style="margin-top:6px">${ic('mail','ic-sm')} <a href="mailto:${ARRIVAL_CONTACT_EMAIL}" style="color:#9CC0EE">${ARRIVAL_CONTACT_EMAIL}</a></span>
           </div>
-          <div style="text-align:right"><div class="mr-tiny" style="color:#8FA0BC">Report ${rep.id} · v${rep.version||'preview'} · link expires ${esc(inp.expiry||'—')}</div></div>
+          <div class="mr-close-meta">Report ${rep.id} · v${rep.version||'preview'}<br>Link expires ${esc(inp.expiry||'—')}</div>
         </div>
-        <!-- Logo as the report footer (client request, 2026-08-06). -->
-        <a href="/" data-nav aria-label="Arrival Relocation Partners, home"
-           style="display:block;text-align:center;padding:26px 20px 8px;border-top:1px solid #E6EBF3;margin-top:6px">
-          <img src="/img/logo.png" alt="Arrival Relocation Partners" style="width:100%;max-width:270px;height:auto;display:inline-block">
-        </a>
-        <div class="mr-tiny" style="text-align:center;padding:0 20px">Market data may lag current conditions. Financial and tax figures are estimates, not tax advice. Past housing performance does not guarantee future results. School, crime and hazard data depend on source coverage. This report supports a relocation decision; it does not replace licensed professional advice.</div>
       </div>
+      <!-- Logo as the report footer (client request, 2026-08-06). -->
+      <a href="/" data-nav aria-label="Arrival Relocation Partners, home" class="mr-footer-logo">
+        <img src="/img/logo.png" alt="Arrival Relocation Partners">
+      </a>
+      <div class="mr-legal">Market data may lag current conditions. Financial and tax figures are estimates, not tax advice. Past housing performance does not guarantee future results. School, crime and hazard data depend on source coverage. This report supports a relocation decision; it does not replace licensed professional advice.</div>
     </div>
   </div>`;
 }
