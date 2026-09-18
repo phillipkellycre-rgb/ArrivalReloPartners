@@ -15,6 +15,10 @@ Relocation Partners. Single-file SPA (`index.html`), backed by Supabase
                           <script> tag in index.html)
     img/                  drop the four brand assets here (not included):
                           logo.png, logo-light.png, mark.png, mark-light.png
+    demo/vendor/, demo/img/   demo/ is served from its own directory (`serve -s
+                          demo`), so it keeps its own copies of vendor/ and
+                          img/ rather than reading the ones above — copy the
+                          same four logo files into demo/img/ too
     migrations/
       001_transactions_invoicing.sql   run once in the Supabase SQL editor
     docs/

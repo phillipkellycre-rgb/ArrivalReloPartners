@@ -350,7 +350,7 @@ textarea.in{resize:vertical;min-height:96px;border-radius:16px}
      depend on a third-party CDN staying up for its portals to open, and a strict
      CSP has nowhere to whitelist. Pinned to @supabase/supabase-js 2.58.0,
      sha256 3ae8cfec4a4715f4e67aa45fe4e7c1a40d67787629c7f10e32afd7dd836edf4e. -->
-<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.58.0/dist/umd/supabase.js"></script>
+<script src="/vendor/supabase-js.min.js"></script>
 <div id="app"></div>
 <div id="toasts"></div>
 <div id="modal-root" onclick="if(event.target===this)closeModal()"></div>
@@ -453,7 +453,7 @@ function ic(name, cls){ return `<svg class="ic ${cls||''}" viewBox="0 0 24 24" a
  */
 const LOGO_AR = 1000/291, MARK_AR = 586/512;
 function logoMark(size, light){
-  return `<img src="https://www.arrivalrelopartners.com/img/mark${light?'-light':''}.png" alt="" aria-hidden="true"
+  return `<img src="/img/mark${light?'-light':''}.png" alt="" aria-hidden="true"
     width="${Math.round(size*MARK_AR)}" height="${size}"
     style="width:${Math.round(size*MARK_AR)}px;height:${size}px;display:block;flex:none">`;
 }
@@ -464,7 +464,7 @@ function logoMark(size, light){
 function logo(light, size){
   const h = (typeof size === 'number' && isFinite(size) && size > 0) ? size : 44;
   return `<a href="/" data-nav class="logo ${light?'light':''}" aria-label="Arrival Relocation Partners, home">
-    <img src="https://www.arrivalrelopartners.com/img/logo${light?'-light':''}.png" alt="Arrival Relocation Partners"
+    <img src="/img/logo${light?'-light':''}.png" alt="Arrival Relocation Partners"
       width="${Math.round(h*LOGO_AR)}" height="${h}"
       style="width:${Math.round(h*LOGO_AR)}px;height:${h}px;display:block">
   </a>`;
@@ -2741,9 +2741,10 @@ function taskRow(t){
 }
 async function toggleTask(id){
   const t = S.tasks.find(t=>t.id===id); if(!t) return;
-  const r = await Data.toggleTask(id, !t.done);
+  const wasDone = t.done;
+  const r = await Data.toggleTask(id, !wasDone);
   if(r && r.ok===false){ toast('Could not save','That change was not stored. Please try again.','err'); return; }
-  toast(!t.done?'Task completed':'Task reopened', t.title, 'ok');
+  toast(!wasDone?'Task completed':'Task reopened', t.title, 'ok');
 }
 
 /* =========================================================
@@ -3001,7 +3002,7 @@ function requestAnother(relId){
         <textarea class="in" id="ram-note" placeholder="e.g., stronger school-district expertise, faster availability, specific neighborhoods…"></textarea></div>
     </div>
     <div class="modal-f"><button class="btn btn-outline btn-sm" onclick="closeModal()">Cancel</button>
-    <button class="btn btn-navy btn-sm" onclick="closeModal();notWired('Requesting another match')">Send request</button></div>`);
+    <button class="btn btn-navy btn-sm" onclick="closeModal();toast('Request sent','Arrival will source additional candidates within one business day.','ok')">Send request</button></div>`);
 }
 function modalComment(relId){
   openModal(`
@@ -3134,7 +3135,7 @@ function docTable(rows){
       <td class="muted num" style="font-size:12px">${d.size}</td>
       <td style="text-align:right;white-space:nowrap">
         <button class="btn btn-ghost btn-xs" onclick="previewDoc('${d.id}')">${ic('eye','ic-sm')} Preview</button>
-        <button class="btn btn-ghost btn-xs" onclick="notWired('Document download')">${ic('download','ic-sm')}</button>
+        <button class="btn btn-ghost btn-xs" onclick="toast('Download started', '${escJs(d.name)} (prototype placeholder).', 'ok')">${ic('download','ic-sm')}</button>
       </td></tr>`).join('')}
     ${rows.length===0?`<tr><td colspan="6"><div class="empty"><div class="icbox navy">${ic('doc')}</div><b style="color:var(--navy)">No documents yet</b><p class="small" style="margin-top:4px">Upload an authorization or supporting document to get started.</p></div></td></tr>`:''}
     </tbody></table></div>`;
@@ -3610,7 +3611,7 @@ function pgAgent(a){
         <b class="tiny" style="letter-spacing:1px;color:var(--gold-deep)">LANGUAGES</b>
         <div class="flex gap8" style="flex-wrap:wrap;margin-top:8px">${a.langs.map(s=>`<span class="badge b-navy" style="font-size:10.5px">${esc(s)}</span>`).join('')}</div>
       </div>
-      <button class="btn btn-navy btn-sm" style="width:100%;margin-top:18px;justify-content:center" onclick="notWired('Introduction requests')">${ic('msg','ic-sm')} Request introduction</button>
+      <button class="btn btn-navy btn-sm" style="width:100%;margin-top:18px;justify-content:center" onclick="toast('Introduction requested','Your Arrival coordinator will introduce you to ${escJs(a.name)}.','ok')">${ic('msg','ic-sm')} Request introduction</button>
     </div>
     <div>
       <div class="card card-pad">
@@ -3668,7 +3669,7 @@ function pgReports(){
     <p class="small" style="max-width:560px">Program-level reporting across your relocation activity. Figures are calculated from your own records; in production these reflect live transaction records.</p>
     <div class="flex gap8">
       <button class="btn btn-outline btn-sm" onclick="exportCSV('relocations')">${ic('download','ic-sm')} Export CSV</button>
-      <button class="btn btn-navy btn-sm" onclick="notWired('Scheduled PDF reporting')">${ic('doc','ic-sm')} Generate PDF</button>
+      <button class="btn btn-navy btn-sm" onclick="toast('PDF generated','Your program report is ready (prototype placeholder).','ok')">${ic('doc','ic-sm')} Generate PDF</button>
     </div>
   </div>
   <div class="card" style="padding:14px 16px;margin-bottom:16px">
@@ -3757,7 +3758,7 @@ function pgDocs(){
         <td class="muted" style="font-size:12px">${esc(d.by)}</td>
         <td style="text-align:right;white-space:nowrap">
           <button class="btn btn-ghost btn-xs" onclick="previewDoc('${d.id}')">${ic('eye','ic-sm')} Preview</button>
-          <button class="btn btn-ghost btn-xs" onclick="notWired('Document download')">${ic('download','ic-sm')}</button>
+          <button class="btn btn-ghost btn-xs" onclick="toast('Download started', '${escJs(d.name)} (prototype placeholder).', 'ok')">${ic('download','ic-sm')}</button>
         </td></tr>`).join('')}
       ${rows.length===0?`<tr><td colspan="6"><div class="empty"><div class="icbox navy">${ic('doc')}</div><b style="color:var(--navy)">No documents match</b></div></td></tr>`:''}
       </tbody></table></div>
@@ -3817,7 +3818,7 @@ function pgCompany(){
             <td class="muted" style="font-size:12.5px">${esc(u.role)}</td>
             <td><span class="badge ${u.title==='Account Administrator'?'b-gold':u.title==='Read-Only User'?'b-gray':'b-navy'}" style="font-size:10.5px">${u.title}</span></td>
             <td style="text-align:right;white-space:nowrap">
-              ${i===0?'<span class="tiny muted">You</span>':`<button class="btn btn-ghost btn-xs" onclick="notWired('Re-sending an invitation')">Resend invite</button>
+              ${i===0?'<span class="tiny muted">You</span>':`<button class="btn btn-ghost btn-xs" onclick="toast('Invitation resent','A new sign-in link was sent to ${escJs(u.email)}.','ok')">Resend invite</button>
               <button class="btn btn-ghost btn-xs" onclick="removeMember('${u.id}')">${ic('trash','ic-sm')}</button>`}
             </td></tr>`).join('')}
           </tbody></table></div>
@@ -3950,7 +3951,7 @@ function pgSettings(){
           <div class="field"><label>Email</label><input class="in" value="${esc(ME?ME.email:'')}" disabled style="background:var(--ivory)"></div>
           <div class="field"><label>Time zone</label><select class="in"><option>Eastern (ET)</option><option>Central (CT)</option><option>Mountain (MT)</option><option>Pacific (PT)</option></select></div>
         </div>
-        <button class="btn btn-navy btn-sm" onclick="notWired('Editing your profile here')">Save changes</button>
+        <button class="btn btn-navy btn-sm" onclick="const nm=document.getElementById('set-name').value.trim();if(nm&&ME){ME.name=nm;route();}toast('Profile saved','Your changes have been saved.','ok')">Save changes</button>
       </div>
       <div class="card card-pad" style="margin-top:16px">
         <h3 style="font-size:15.5px;margin-bottom:6px">Security</h3>
@@ -4410,7 +4411,7 @@ function ccDash(){
       <div class="flex between"><h3 style="font-size:15px">My tasks</h3><a class="linklike tiny" href="/command-center/tasks" data-nav>All tasks</a></div>
       <div style="margin-top:10px;display:flex;flex-direction:column;gap:8px">
         ${tasks.map(t=>`<div class="flex gap8" style="align-items:flex-start;padding:8px 0;border-bottom:1px solid var(--line)">
-          <button class="iconbtn" style="width:22px;height:22px;flex:none" onclick="toggleITask('${t.id}')" aria-label="Complete task">${ic('check','ic-sm')}</button>
+          <button class="iconbtn" style="width:22px;height:22px;flex:none;border:1.6px solid var(--line);border-radius:6px" onclick="toggleITask('${t.id}')" aria-label="Complete task"></button>
           <div><span style="font-size:13px;color:var(--ink)">${esc(t.title)}</span>
           <div class="tiny muted">${esc(t.owner)} · due ${fmtDs(t.due)} · <span class="badge ${t.pri==='High'?'b-red':t.pri==='Medium'?'b-amber':'b-gray'}" style="font-size:9px">${t.pri}</span></div></div>
         </div>`).join('')}
@@ -4657,7 +4658,7 @@ function ccAssign(relId, agentId){
 function ccTasks(){
   const open = (S.tasks||[]).filter(t=>!t.done), done = (S.tasks||[]).filter(t=>t.done);
   const row = t => `<div class="flex gap12" style="padding:11px 0;border-bottom:1px solid var(--line);align-items:flex-start">
-    <button class="iconbtn" style="width:24px;height:24px;flex:none;${t.done?'background:var(--navy);color:#fff':''}" onclick="toggleITask('${t.id}')" aria-label="Toggle task">${ic('check','ic-sm')}</button>
+    <button class="iconbtn" style="width:24px;height:24px;flex:none;border:1.6px solid ${t.done?'var(--navy)':'var(--line)'};border-radius:6px;${t.done?'background:var(--navy);color:#fff':''}" onclick="toggleITask('${t.id}')" aria-label="${t.done?'Reopen':'Complete'} task">${t.done?ic('check','ic-sm'):''}</button>
     <div style="min-width:0"><span style="font-size:13.5px;color:var(--ink);${t.done?'text-decoration:line-through;opacity:.55':''}">${esc(t.title)}</span>
     <div class="tiny muted">${[t.owner?esc(t.owner):null, t.due?'due '+fmtDs(t.due):null].filter(Boolean).join(' · ')||'No due date'}${t.rel?` · <a class="linklike" href="/command-center/relocations/${t.rel}" data-nav>${esc(t.rel)}</a>`:''}</div></div>
     <span class="badge ${t.pri==='high'?'b-red':t.pri==='normal'?'b-amber':'b-gray'}" style="margin-left:auto;flex:none">${esc(t.pri||'normal')}</span></div>`;
@@ -4666,9 +4667,10 @@ function ccTasks(){
 }
 async function toggleITask(id){
   const t=(S.tasks||[]).find(x=>x.id===id); if(!t) return;
-  const r = await Data.toggleTask(id, !t.done);
+  const wasDone = t.done;
+  const r = await Data.toggleTask(id, !wasDone);
   if(r && r.ok===false){ toast('Could not save','That change was not stored. Please try again.','err'); return; }
-  toast(!t.done?'Task completed':'Task reopened', t.title, 'ok');
+  toast(!wasDone?'Task completed':'Task reopened', t.title, 'ok');
 }
 
 /* ---------- agents & applications ---------- */
@@ -5246,7 +5248,7 @@ function oppInfo(id){
     <div class="modal-b"><div class="field"><label>What would help you decide?</label>
       <textarea class="in" id="oi-q" placeholder="e.g., Is the timeline flexible? Any school-district constraints?"></textarea></div></div>
     <div class="modal-f"><button class="btn btn-outline btn-sm" onclick="closeModal()">Cancel</button>
-    <button class="btn btn-navy btn-sm" onclick="closeModal();notWired('Sending a question')">Send question</button></div>`);
+    <button class="btn btn-navy btn-sm" onclick="closeModal();toast('Question sent','Arrival will pass this along and get back to you.','ok')">Send question</button></div>`);
 }
 
 /* ---------- assignments ---------- */
@@ -5396,7 +5398,7 @@ function agCoverage(){
         <span class="small" style="flex:1;color:var(--ink)">${esc(m.name)}${m.note?`<div class="tiny muted">${esc(m.note)}</div>`:''}</span>
         <span class="badge ${m.type==='Primary'?'b-navy':m.type==='Secondary'?'b-gold':'b-amber'}">${m.type}</span>
       </div>`).join('')}
-      <button class="btn btn-outline btn-sm" style="margin-top:12px" onclick="notWired('Coverage change requests')">${ic('edit','ic-sm')} Request coverage change</button>
+      <button class="btn btn-outline btn-sm" style="margin-top:12px" onclick="toast('Request sent','Your Arrival coordinator will follow up about your coverage areas.','ok')">${ic('edit','ic-sm')} Request coverage change</button>
     </div>
   </div>`;
 }
@@ -5432,7 +5434,7 @@ function agCreds(){
     </div>
     <div class="flex gap8" style="margin-top:16px;flex-wrap:wrap">
     </div>
-    <p class="tiny muted" style="margin-top:12px">Arrival records your licence details manually from what you supply. Nothing here is checked against a state register automatically., typically when you're submitted through your brokerage. You'll never be asked to upload a copy of your license.</p>
+    <p class="tiny muted" style="margin-top:12px">Arrival records your licence details manually from what you supply, typically when you're submitted through your brokerage. Nothing here is checked against a state register automatically. You'll never be asked to upload a copy of your license.</p>
   </div>
   ${others.length?`<div class="card" style="margin-top:14px"><div class="card-pad" style="padding-bottom:0">
     <h3 style="font-size:15px">Other items on file</h3>
@@ -5638,7 +5640,7 @@ function empAsk(relId, agentId){
     <div class="modal-b"><p class="muted small">Your question goes through your Arrival coordinator, your contact details stay private until you select an agent.</p>
       <div class="field" style="margin-top:12px"><label>Your question</label><textarea class="in" id="eq-q" placeholder="e.g., How competitive are offers in the school districts we\u2019re targeting?"></textarea></div></div>
     <div class="modal-f"><button class="btn btn-outline btn-sm" onclick="closeModal()">Cancel</button>
-    <button class="btn btn-navy btn-sm" onclick="closeModal();notWired('Sending a question')">Send question</button></div>`);
+    <button class="btn btn-navy btn-sm" onclick="closeModal();toast('Question sent','Your Arrival coordinator will pass this along to ${escJs(a.name.split(' ')[0])}.','ok')">Send question</button></div>`);
 }
 function empConfirm(kind){
   const map = {

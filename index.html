@@ -2583,9 +2583,10 @@ function taskRow(t){
 }
 async function toggleTask(id){
   const t = S.tasks.find(t=>t.id===id); if(!t) return;
-  const r = await Data.toggleTask(id, !t.done);
+  const wasDone = t.done;
+  const r = await Data.toggleTask(id, !wasDone);
   if(r && r.ok===false){ toast('Could not save','That change was not stored. Please try again.','err'); return; }
-  toast(!t.done?'Task completed':'Task reopened', t.title, 'ok');
+  toast(!wasDone?'Task completed':'Task reopened', t.title, 'ok');
 }
 
 /* =========================================================
@@ -4252,7 +4253,7 @@ function ccDash(){
       <div class="flex between"><h3 style="font-size:15px">My tasks</h3><a class="linklike tiny" href="/command-center/tasks" data-nav>All tasks</a></div>
       <div style="margin-top:10px;display:flex;flex-direction:column;gap:8px">
         ${tasks.map(t=>`<div class="flex gap8" style="align-items:flex-start;padding:8px 0;border-bottom:1px solid var(--line)">
-          <button class="iconbtn" style="width:22px;height:22px;flex:none" onclick="toggleITask('${t.id}')" aria-label="Complete task">${ic('check','ic-sm')}</button>
+          <button class="iconbtn" style="width:22px;height:22px;flex:none;border:1.6px solid var(--line);border-radius:6px" onclick="toggleITask('${t.id}')" aria-label="Complete task"></button>
           <div><span style="font-size:13px;color:var(--ink)">${esc(t.title)}</span>
           <div class="tiny muted">${esc(t.owner)} · due ${fmtDs(t.due)} · <span class="badge ${t.pri==='High'?'b-red':t.pri==='Medium'?'b-amber':'b-gray'}" style="font-size:9px">${t.pri}</span></div></div>
         </div>`).join('')}
@@ -4499,7 +4500,7 @@ function ccAssign(relId, agentId){
 function ccTasks(){
   const open = (S.tasks||[]).filter(t=>!t.done), done = (S.tasks||[]).filter(t=>t.done);
   const row = t => `<div class="flex gap12" style="padding:11px 0;border-bottom:1px solid var(--line);align-items:flex-start">
-    <button class="iconbtn" style="width:24px;height:24px;flex:none;${t.done?'background:var(--navy);color:#fff':''}" onclick="toggleITask('${t.id}')" aria-label="Toggle task">${ic('check','ic-sm')}</button>
+    <button class="iconbtn" style="width:24px;height:24px;flex:none;border:1.6px solid ${t.done?'var(--navy)':'var(--line)'};border-radius:6px;${t.done?'background:var(--navy);color:#fff':''}" onclick="toggleITask('${t.id}')" aria-label="${t.done?'Reopen':'Complete'} task">${t.done?ic('check','ic-sm'):''}</button>
     <div style="min-width:0"><span style="font-size:13.5px;color:var(--ink);${t.done?'text-decoration:line-through;opacity:.55':''}">${esc(t.title)}</span>
     <div class="tiny muted">${[t.owner?esc(t.owner):null, t.due?'due '+fmtDs(t.due):null].filter(Boolean).join(' · ')||'No due date'}${t.rel?` · <a class="linklike" href="/command-center/relocations/${t.rel}" data-nav>${esc(t.rel)}</a>`:''}</div></div>
     <span class="badge ${t.pri==='high'?'b-red':t.pri==='normal'?'b-amber':'b-gray'}" style="margin-left:auto;flex:none">${esc(t.pri||'normal')}</span></div>`;
@@ -4508,9 +4509,10 @@ function ccTasks(){
 }
 async function toggleITask(id){
   const t=(S.tasks||[]).find(x=>x.id===id); if(!t) return;
-  const r = await Data.toggleTask(id, !t.done);
+  const wasDone = t.done;
+  const r = await Data.toggleTask(id, !wasDone);
   if(r && r.ok===false){ toast('Could not save','That change was not stored. Please try again.','err'); return; }
-  toast(!t.done?'Task completed':'Task reopened', t.title, 'ok');
+  toast(!wasDone?'Task completed':'Task reopened', t.title, 'ok');
 }
 
 /* ---------- agents & applications ---------- */
@@ -5274,7 +5276,7 @@ function agCreds(){
     </div>
     <div class="flex gap8" style="margin-top:16px;flex-wrap:wrap">
     </div>
-    <p class="tiny muted" style="margin-top:12px">Arrival records your licence details manually from what you supply. Nothing here is checked against a state register automatically., typically when you're submitted through your brokerage. You'll never be asked to upload a copy of your license.</p>
+    <p class="tiny muted" style="margin-top:12px">Arrival records your licence details manually from what you supply, typically when you're submitted through your brokerage. Nothing here is checked against a state register automatically. You'll never be asked to upload a copy of your license.</p>
   </div>
   ${others.length?`<div class="card" style="margin-top:14px"><div class="card-pad" style="padding-bottom:0">
     <h3 style="font-size:15px">Other items on file</h3>
