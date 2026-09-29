@@ -2782,7 +2782,10 @@ function pgRelo(r){
             <span class="badge ${STAGE_BADGE[r.status]}"><span class="dot"></span>${r.status}</span>
             <span class="badge ${RISK_BADGE[r.risk]||'b-gray'}">${r.risk?esc(r.risk)+' risk':'Risk not assessed'}</span>
           </div>
-          <div class="muted small" style="margin-top:3px">${[r.role,r.dept].filter(Boolean).map(esc).join(' · ')} · <span class="num">${r.id}</span></div>
+          <div class="flex gap8" style="margin-top:5px;align-items:center">
+            <span class="muted small">${[r.role,r.dept].filter(Boolean).map(esc).join(' · ')} · <span class="num">${r.id}</span></span>
+            ${['Completed','On Hold'].includes(r.status)?'':'<span class="live-tag"><span class="blip"></span>Live</span>'}
+          </div>
           <div class="flex gap16 small" style="margin-top:8px;flex-wrap:wrap;color:var(--slate)">
             <span class="flex gap8">${ic('pin','ic-sm')} ${esc(r.origin)} ${ic('arrR','ic-sm')} <b style="color:var(--navy)">${esc(r.dest)}</b></span>
             <span class="flex gap8">${ic('cal','ic-sm')} Target: <b style="color:var(--navy)" class="num">${fmtD(r.target)}</b></span>
