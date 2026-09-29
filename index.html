@@ -17,7 +17,7 @@
 <meta name="description" content="Arrival Relocation Partners connects relocating employees with vetted local real estate experts nationwide, with one coordinator per move and full visibility from intake through closing." />
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=Playfair+Display:wght@600;700;800;900&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,wght@0,500;0,600;0,700;0,800;1,500&family=IBM+Plex+Sans:wght@400;500;600;700;800&family=IBM+Plex+Mono:wght@500;600;700&display=swap" rel="stylesheet">
 <style>
 :root{
   --navy:#172D52; --midnight:#0B1B36; --deep:#091427;
@@ -34,16 +34,19 @@
   --shadow:0 4px 14px rgba(23,45,82,.10), 0 18px 40px rgba(23,45,82,.12);
   --shadow-lg:0 18px 50px rgba(23,45,82,.28), 0 4px 14px rgba(23,45,82,.14);
   --r:16px; --r-lg:22px; --r-pill:999px;
+  --font-display:'Fraunces',Georgia,serif;
+  --font-body:'IBM Plex Sans',system-ui,-apple-system,sans-serif;
+  --font-mono:'IBM Plex Mono',ui-monospace,'SF Mono',Consolas,monospace;
 }
 *{margin:0;padding:0;box-sizing:border-box}
 html{scroll-behavior:smooth}
-html,body{background:var(--ivory);color:var(--ink);font-family:'Plus Jakarta Sans',system-ui,sans-serif;font-size:15px;line-height:1.6;-webkit-font-smoothing:antialiased}
+html,body{background:var(--ivory);color:var(--ink);font-family:var(--font-body);font-size:15px;line-height:1.6;-webkit-font-smoothing:antialiased}
 img,svg{display:block}
 a{color:inherit;text-decoration:none}
 button{font-family:inherit;cursor:pointer;border:none;background:none;color:inherit;font-size:inherit}
 input,select,textarea{font-family:inherit;font-size:14.5px;color:var(--ink)}
 h1,h2,h3,h4{line-height:1.15;font-weight:800;letter-spacing:-.015em;color:var(--navy)}
-.serif{font-family:'Plus Jakarta Sans',system-ui,sans-serif;font-weight:800;letter-spacing:-.015em}
+.serif{font-family:var(--font-display);font-weight:600;letter-spacing:-.01em}
 .wrap{max-width:1180px;margin:0 auto;padding:0 28px}
 .eyebrow{display:inline-flex;align-items:center;gap:10px;font-size:11.5px;font-weight:700;letter-spacing:.16em;text-transform:uppercase;color:var(--navy)}
 .eyebrow::before{content:'';width:26px;height:1px;background:var(--gold)}
@@ -135,6 +138,33 @@ h1,h2,h3,h4{line-height:1.15;font-weight:800;letter-spacing:-.015em;color:var(--
 .hero .lede{color:rgba(255,255,255,.68)}
 .hero .eyebrow{color:#9FC1F0}
 .hero .eyebrow::before{background:rgba(255,255,255,.4)}
+
+/* ---------- home hero: light editorial variant, homepage only ---------- */
+.home-hero{background:var(--paper,#fff);color:var(--ink)}
+.home-hero::before{display:none}
+.home-hero h1{color:var(--navy)}
+.home-hero .lede{color:var(--slate)}
+.home-hero .eyebrow{color:var(--gold)}
+.home-hero .eyebrow::before{background:var(--gold);opacity:.5}
+.home-hero .hero-ghost{-webkit-text-stroke:1px rgba(23,45,82,.08)}
+
+/* ---------- manifest card (hero) ---------- */
+.live-tag{display:inline-flex;align-items:center;gap:6px;font:700 9.5px var(--font-mono);letter-spacing:.08em;color:#1E7A46;background:#E7F6ED;padding:4px 9px;border-radius:999px}
+.live-tag .blip{width:6px;height:6px;border-radius:50%;background:#1E9950;animation:blip 1.6s ease-in-out infinite}
+@keyframes blip{0%,100%{opacity:1;transform:scale(1)}50%{opacity:.3;transform:scale(.7)}}
+@media(prefers-reduced-motion:reduce){.live-tag .blip{animation:none}}
+.manifest-card{position:relative;background:#fff;border:1px solid var(--line);border-radius:26px;box-shadow:var(--shadow-lg);padding:26px 26px 22px}
+.manifest-card .m-head{display:flex;justify-content:space-between;align-items:center;font:600 11px var(--font-mono);letter-spacing:.09em;text-transform:uppercase;color:var(--slate)}
+.manifest-card .m-head .idg{display:flex;align-items:center;gap:10px}
+.manifest-card .m-head b{font-family:var(--font-mono);color:var(--navy)}
+.manifest-card .m-route{display:flex;align-items:center;gap:16px;margin-top:16px}
+.manifest-card .m-route .code{font:700 32px var(--font-mono);letter-spacing:-.01em;color:var(--navy)}
+.manifest-card .m-route .arrow{color:var(--gold);font-size:20px;margin-top:-16px}
+.manifest-card .m-route .city{display:block;font-size:11px;color:var(--slate);text-transform:uppercase;letter-spacing:.03em;margin-top:2px}
+.manifest-card .m-meta{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-top:18px;padding-top:16px;border-top:1px solid var(--line)}
+.manifest-card .m-meta span{display:block;font-size:10px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--mist)}
+.manifest-card .m-meta b{display:block;margin-top:3px;font-size:13.5px;color:var(--ink)}
+.manifest-sample-tag{position:absolute;top:-12px;right:18px;background:#fff}
 .stat-strip{position:relative;z-index:2;display:grid;grid-template-columns:repeat(4,1fr);background:var(--navy);border-radius:var(--r-pill);box-shadow:var(--shadow-lg);overflow:hidden;padding:22px 8px;margin-top:-38px}
 .stat-strip>div{background:transparent;padding:6px 14px;text-align:center;border-right:1px solid rgba(255,255,255,.14)}
 .stat-strip>div:last-child{border-right:none}
@@ -153,6 +183,21 @@ h1,h2,h3,h4{line-height:1.15;font-weight:800;letter-spacing:-.015em;color:var(--
 .deep .eyebrow{color:#9FC1F0}
 .deep .eyebrow::before{background:rgba(255,255,255,.4)}
 .deep .card{background:rgba(255,255,255,.05);border-color:rgba(255,255,255,.10)}
+
+/* ---------- coverage: map + featured list (homepage) ---------- */
+.cov-layout{display:grid;grid-template-columns:1.3fr 1fr;border:1px solid var(--line);border-radius:22px;overflow:hidden;background:#fff}
+.cov-map-cell{position:relative;padding:16px;border-right:1px solid var(--line)}
+.cov-map-cell svg{width:100%;height:auto;display:block}
+.cov-hint{position:absolute;left:30px;bottom:26px;font:600 10.5px var(--font-body);color:var(--slate);letter-spacing:.02em}
+.cov-list-cell{padding:22px 24px}
+.cov-list-cell h4{font:700 11px var(--font-body);letter-spacing:.08em;text-transform:uppercase;color:var(--slate);margin:0 0 6px}
+.cov-list-row{display:flex;align-items:center;justify-content:space-between;padding:11px 0;border-bottom:1px solid var(--line);font-size:13.5px}
+.cov-list-row:last-child{border-bottom:none}
+.cov-list-row .code{font:700 12px var(--font-mono);color:var(--gold);width:38px;flex:none}
+.cov-list-row .city{flex:1;font-weight:600;padding:0 8px;color:var(--navy)}
+.cov-list-row .val{font:600 12.5px var(--font-mono);color:var(--slate)}
+.cov-note{margin-top:16px;font-size:12.5px;color:var(--slate)}
+@media(max-width:860px){.cov-layout{grid-template-columns:1fr}.cov-map-cell{border-right:none;border-bottom:1px solid var(--line)}}
 
 /* ---------- icons ---------- */
 .ic{width:20px;height:20px;stroke:currentColor;fill:none;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round;flex:none}
@@ -541,7 +586,12 @@ const MARKETS = [
   {city:'Orlando',st:'FL',lat:28.54,lon:-81.38,agents:7,resp:'42 min',done:51,spec:'Hospitality & healthcare moves'},
 ];
 
-
+const MARKET_CODE = {Atlanta:'ATL','New York':'NYC',Chicago:'CHI',Dallas:'DAL',Houston:'HOU',Austin:'AUS',Miami:'MIA',Charlotte:'CLT',Nashville:'BNA',Raleigh:'RDU','Washington, DC':'DCA',Boston:'BOS',Denver:'DEN',Seattle:'SEA','Los Angeles':'LAX','San Francisco':'SFO',Phoenix:'PHX',Tampa:'TPA',Orlando:'MCO'};
+/* Homepage coverage card: fastest measured response times, real MARKETS rows. */
+function covFastestRows(){
+  const fastest = MARKETS.slice().sort((a,b)=>parseInt(a.resp)-parseInt(b.resp)).slice(0,6);
+  return fastest.map(m=>`<div class="cov-list-row"><span class="code">${MARKET_CODE[m.city]||m.city.slice(0,3).toUpperCase()}</span><span class="city">${esc(m.city)}, ${esc(m.st)}</span><span class="val">${esc(m.resp)}</span></div>`).join('');
+}
 
 const STAGES = ['Intake','Preferences Pending','Matching','Agent Assigned','Home Search','Under Contract','Closing Scheduled','Completed','On Hold'];
 const STAGE_BADGE = {'Intake':'b-gray','Preferences Pending':'b-gray','Matching':'b-gold','Agent Assigned':'b-navy','Home Search':'b-navy','Under Contract':'b-gold','Closing Scheduled':'b-teal','Completed':'b-teal','On Hold':'b-amber'};
@@ -1717,22 +1767,22 @@ function pageHome(){
   const quotes = ARRIVAL_FACTS.testimonials;  // real, client-approved quotes only; empty until supplied
   return `
   <!-- HERO -->
-  <section class="hero">
+  <section class="hero home-hero">
     <div class="hero-grid"></div>
     <div class="hero-ghost">ARRIVAL</div>
     <div class="wrap" style="position:relative;padding-top:96px;padding-bottom:56px">
       <div class="grid split2" style="grid-template-columns:1.05fr .95fr;gap:56px;align-items:center">
         <div>
-          <span class="eyebrow">Corporate Relocation</span>
-          <h1 class="serif" style="margin-top:18px">Ready to move your team, but don't know where to start?</h1>
-          <p class="lede" style="margin-top:22px;font-size:18px">Give relocating employees a trusted local real estate expert, and give your team complete visibility from intake through closing.</p>
+          <span class="eyebrow">Corporate relocation, rebuilt</span>
+          <h1 class="serif" style="margin-top:18px">Every relocation, tracked to the day it closes.</h1>
+          <p class="lede" style="margin-top:22px;font-size:18px">One coordinator, one dashboard, and a vetted local agent waiting in every market your employees move to. No spreadsheets, no guessing where a move stands.</p>
           <div style="display:flex;gap:12px;margin-top:28px;flex-wrap:wrap">
-            <a href="/contact" data-nav class="btn" style="background:#fff;color:var(--navy)">Schedule a Consultation</a>
-            <a href="/how-it-works" data-nav class="btn btn-outline-light">Explore the Platform</a>
+            <a href="/contact" data-nav class="btn btn-gold">Schedule a Consultation</a>
+            <a href="#coverage" onclick="event.preventDefault();document.getElementById('coverage').scrollIntoView({behavior:'smooth'})" class="btn btn-outline">See coverage ${ic('arrR','ic-sm')}</a>
           </div>
         </div>
         <div>
-          ${heroVisual()}
+          ${heroManifest()}
         </div>
       </div>
     </div>
@@ -1819,22 +1869,23 @@ function pageHome(){
   </section>
 
   <!-- AGENT NETWORK / MAP -->
-  <section class="section dark">
+  <section class="section" id="coverage">
     <div class="wrap">
-      <div class="grid split2" style="grid-template-columns:.85fr 1.15fr;gap:56px;align-items:center">
-        <div>
-          <span class="eyebrow" style="color:var(--gold-deep)">The Arrival Agent Network</span>
-          <h2 class="serif" style="font-size:36px;margin-top:14px">Vetted experts. Every major market.</h2>
-          <p class="lede" style="margin-top:14px">We hand-select top-producing agents in each metro, monitor their performance on every relocation, and manage every introduction personally.</p>
-          <div style="margin-top:24px;display:flex;flex-direction:column;gap:13px">
-            ${[['shield','Vetted top producers'],['pin','Local market experts'],['globe','Nationwide coverage'],['award','Consistent service standards'],['chart','Performance monitoring'],['msg','Responsive communication']].map(([i,t])=>`
-              <span class="flex gap12"><i class="icbox deep" style="width:36px;height:36px;border-radius:9px">${ic(i,'ic-sm')}</i><b style="font-size:14px;color:var(--navy)">${t}</b></span>`).join('')}
-          </div>
-          <a href="/agent-network" data-nav class="btn btn-gold" style="margin-top:30px">Explore the network ${ic('arrR','ic-sm')}</a>
-        </div>
-        <div>
+      <div style="text-align:center;max-width:620px;margin:0 auto 40px">
+        <span class="eyebrow center">Coverage</span>
+        <h2 class="serif" style="font-size:36px;margin-top:14px">Vetted experts, every major market.</h2>
+        <p class="lede" style="margin:14px auto 0">We hand-select top-producing agents in each metro, monitor their performance on every relocation, and manage every introduction personally. Click a pin to see it.</p>
+      </div>
+      <div class="cov-layout">
+        <div class="cov-map-cell">
           ${mapSVG('homemap')}
-          <p class="tiny" style="color:var(--mist);margin-top:10px;text-align:center">Select a market to see sample coverage. Demonstration data.</p>
+          <span class="cov-hint">${MARKETS.length} markets shown &middot; demonstration data</span>
+        </div>
+        <div class="cov-list-cell">
+          <h4>Fastest response times</h4>
+          <div>${covFastestRows()}</div>
+          <p class="cov-note">Measured from referral to first agent contact, network-wide average.</p>
+          <a href="/agent-network" data-nav class="btn btn-gold btn-sm" style="margin-top:18px">Explore the network ${ic('arrR','ic-sm')}</a>
         </div>
       </div>
     </div>
@@ -1907,22 +1958,37 @@ function pageHome(){
   </section>`;
 }
 
-function heroVisual(){
+/* Hero visual: an illustrative single manifest, the same route+status+progress
+   pattern reloTable()/pgRelo() render from real S.relocations rows, not a
+   fabricated aggregate KPI card. Marked "Sample manifest" for the same reason
+   heroVisual() used to be labeled "Demo": nothing here is a business-scale claim. */
+function heroManifest(){
   return `<div style="position:relative">
-    <div class="card" style="background:linear-gradient(155deg,#1F3A66,#0E1F3C);border-color:rgba(255,255,255,.14);box-shadow:var(--shadow-lg);padding:22px;border-radius:26px">
-      <div class="flex between" style="margin-bottom:14px">
-        <span class="flex gap8" style="font-size:12.5px;font-weight:700;color:#fff">${logoMark(20,true)} Corporate Command Center</span>
-        <span class="badge" style="background:rgba(159,225,197,.15);color:#8FE0C3">● Live tracking</span>
+    <span class="chip manifest-sample-tag">Sample manifest, illustrative</span>
+    <div class="manifest-card">
+      <div class="m-head">
+        <span>Relocation manifest</span>
+        <span class="idg"><span class="live-tag"><span class="blip"></span>Live</span><b>ARP&ndash;118820</b></span>
       </div>
-      <div class="grid g2" style="gap:9px">
-        ${[['ACTIVE RELOCATIONS','11'],['CLOSED THIS YEAR','23'],['AVG. DAYS TO MATCH','4.2'],['SATISFACTION','4.8/5']].map(([l,v])=>`
-        <div style="background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.09);border-radius:14px;padding:13px 14px">
-          <div class="tiny" style="color:rgba(255,255,255,.5);font-weight:600;letter-spacing:.04em">${l}</div>
-          <b style="font-size:21px;color:#fff" class="num">${v}</b>
-        </div>`).join('')}
+      <div class="m-route">
+        <div><span class="code">ATL</span><span class="city">Atlanta, GA</span></div>
+        <div class="arrow">&rarr;</div>
+        <div><span class="code">RDU</span><span class="city">Raleigh, NC</span></div>
+      </div>
+      <div class="flex between" style="margin-top:18px">
+        <span class="badge b-gold">Under contract</span>
+        <span class="badge" style="background:var(--gold-soft);color:var(--gold-deep)">On schedule</span>
+      </div>
+      <div style="margin-top:16px">
+        <div class="pbar gold"><i style="width:82%"></i></div>
+        <div class="flex between tiny muted" style="margin-top:7px;font-family:var(--font-mono)"><span>82% to closing</span><span>Target Nov 14</span></div>
+      </div>
+      <div class="m-meta">
+        <div><span>Coordinator</span><b>Dana Whitfield</b></div>
+        <div><span>Agent</span><b>Priya Raghunathan</b></div>
+        <div><span>Stage</span><b>Closing sched.</b></div>
       </div>
     </div>
-    <div style="position:absolute;bottom:-16px;left:-16px;width:64px;height:64px;border-radius:50%;background:#fff;box-shadow:var(--shadow-lg);display:flex;align-items:center;justify-content:center;color:var(--navy);font-weight:800;font-size:11px;text-align:center;line-height:1.15">3 DAY<br>MATCH</div>
   </div>`;
 }
 
