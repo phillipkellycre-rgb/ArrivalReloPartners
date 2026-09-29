@@ -2428,7 +2428,6 @@ function pgDash(){
   const c = relCounts();
   const active = S.relocations.filter(r=>!['Completed','On Hold'].includes(r.status)).length;
   const atRisk = S.relocations.filter(r=>r.risk==='High'||r.risk==='Medium').length;
-  const openTasks = S.tasks.filter(t=>!t.done);
   const att = attentionItems();
   /* DECLARED BEFORE USE. These consts sat AFTER the kpis array that reads them,
      so pgDash threw "Cannot access 'mktSub' before initialization" and the whole
@@ -2511,27 +2510,16 @@ function pgDash(){
     </div>
   </div>
 
-  <div class="grid" style="grid-template-columns:1fr 1fr;gap:18px;margin-top:18px" id="mid-row">
-    <style>@media(max-width:1000px){#mid-row{grid-template-columns:1fr!important}}</style>
-    <div class="card">
-      <div class="flex between" style="padding:18px 20px 0"><h3 style="font-size:15.5px">Upcoming tasks</h3>
-        <a class="linklike tiny" href="/corporate/relocations" data-nav>View relocations</a></div>
-      <div style="padding:10px 8px 12px">
-        ${openTasks.slice(0,6).map(t=>taskRow(t)).join('')}
-        ${openTasks.length===0?'<div class="empty">All caught up, no open tasks.</div>':''}
-      </div>
-    </div>
-    <div class="card">
-      <div class="flex between" style="padding:18px 20px 0">
-        <h3 style="font-size:15.5px" class="flex gap8">${ic('alert','ic-sm')} Attention needed</h3>
-        <span class="badge b-amber">${att.length} items</span></div>
-      <div style="padding:12px 14px 16px;display:flex;flex-direction:column;gap:10px">
-        ${att.map(a=>`
-        <div class="card card-hover" style="padding:13px 15px;cursor:pointer;border-left:3px solid ${a.sev==='high'?'var(--red)':a.sev==='med'?'var(--amber)':'var(--mist)'}" onclick="nav('/corporate/relocations/${a.rel}')">
-          <div class="flex between"><b style="font-size:13.5px;color:var(--navy)">${esc(a.t)}</b><span class="tiny muted num">${a.rel}</span></div>
-          <div class="tiny muted" style="margin-top:3px">${esc(a.emp)}, ${esc(a.d)}</div>
-        </div>`).join('')}
-      </div>
+  <div class="card" style="margin-top:18px" id="mid-row">
+    <div class="flex between" style="padding:18px 20px 0">
+      <h3 style="font-size:15.5px" class="flex gap8">${ic('alert','ic-sm')} Attention needed</h3>
+      <span class="badge b-amber">${att.length} items</span></div>
+    <div style="padding:12px 14px 16px;display:flex;flex-direction:column;gap:10px">
+      ${att.map(a=>`
+      <div class="card card-hover" style="padding:13px 15px;cursor:pointer;border-left:3px solid ${a.sev==='high'?'var(--red)':a.sev==='med'?'var(--amber)':'var(--mist)'}" onclick="nav('/corporate/relocations/${a.rel}')">
+        <div class="flex between"><b style="font-size:13.5px;color:var(--navy)">${esc(a.t)}</b><span class="tiny muted num">${a.rel}</span></div>
+        <div class="tiny muted" style="margin-top:3px">${esc(a.emp)}, ${esc(a.d)}</div>
+      </div>`).join('')}
     </div>
   </div>
 
