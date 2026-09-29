@@ -2128,25 +2128,35 @@ function heroManifest(){
   </div>`;
 }
 
+/* Portal preview: illustrative routes, not named individuals. The old version
+   showed "Dr. Sarah Johnson" etc. as if real clients; replaced for the same
+   reason heroVisual() was, and restyled off the retired dark-chrome look. */
 function portalPreview(){
-  return `<div class="card" style="padding:0;overflow:hidden;border-radius:16px;box-shadow:var(--shadow)">
-    <div style="background:var(--midnight);padding:13px 18px;display:flex;align-items:center;gap:10px">
-      ${logoMark(18,true)}<b style="color:#fff;font-size:12.5px;letter-spacing:.08em">CORPORATE PORTAL. PREVIEW</b>
-      <span style="margin-left:auto" class="badge b-gold">Demo</span>
+  const sample = [
+    {route:'ATL &rarr; RDU', status:'Under contract', badge:'b-gold', pct:91},
+    {route:'BOS &rarr; SEA', status:'Home search', badge:'b-navy', pct:48},
+    {route:'ATL &rarr; CLT', status:'Matching', badge:'b-amber', pct:18},
+  ];
+  return `<div class="card" style="padding:0;overflow:hidden;border-radius:18px;box-shadow:var(--shadow-lg)">
+    <div style="display:flex;gap:6px;align-items:center;padding:13px 16px;border-bottom:1px solid var(--line);background:var(--warm)">
+      <span style="width:9px;height:9px;border-radius:50%;background:var(--line)"></span>
+      <span style="width:9px;height:9px;border-radius:50%;background:var(--line)"></span>
+      <span style="width:9px;height:9px;border-radius:50%;background:var(--line)"></span>
+      <span style="margin-left:auto;font:600 10.5px var(--font-mono);letter-spacing:.06em;color:var(--slate);text-transform:uppercase">Corporate portal, sample</span>
     </div>
     <div style="padding:20px">
       <div class="grid g3" style="gap:10px">
-        ${[['Active','11','b-navy'],['At risk','2','b-amber'],['Closed YTD','23','b-teal']].map(([l,v,b])=>`
+        ${[['Active','6'],['At risk','2'],['Closed YTD','14']].map(([l,v])=>`
           <div style="border:1px solid var(--line);border-radius:11px;padding:11px 13px"><div class="tiny muted">${l}</div><b class="num" style="font-size:20px;color:var(--navy)">${v}</b></div>`).join('')}
       </div>
-      <div style="border:1px solid var(--line);border-radius:11px;margin-top:10px;overflow:hidden">
-        <table class="tbl"><thead><tr><th>Employee</th><th>Destination</th><th>Status</th></tr></thead>
-        <tbody>
-          ${[['Dr. Sarah Johnson','Atlanta, GA','Under Contract','b-gold'],['James Walker','Charlotte, NC','Under Contract','b-gold'],['Rachel Kim','Seattle, WA','Agent Assigned','b-navy'],['Olivia Martinez','Tampa, FL','Closing Scheduled','b-teal']].map(([n,d,s,b])=>`
-          <tr><td><b style="font-size:12.5px">${n}</b></td><td class="muted" style="font-size:12.5px">${d}</td><td><span class="badge ${b}" style="font-size:10.5px">${s}</span></td></tr>`).join('')}
-        </tbody></table>
+      <div style="margin-top:12px">
+        ${sample.map(r=>`<div class="flex between" style="padding:11px 0;border-top:1px solid var(--line);gap:10px">
+          <b style="font-family:var(--font-mono);font-size:13px;color:var(--navy);white-space:nowrap">${r.route}</b>
+          <span class="badge ${r.badge}" style="font-size:10.5px;white-space:nowrap">${r.status}</span>
+          <div class="pbar" style="width:70px;flex:none"><i style="width:${r.pct}%"></i></div>
+        </div>`).join('')}
       </div>
-      <div class="flex between" style="margin-top:14px">
+      <div class="flex between" style="margin-top:14px;gap:10px">
         <span class="tiny muted">Everything your team monitors: stage, agent, dates, tasks, documents, risk.</span>
         <a href="/login" data-nav class="linklike" style="white-space:nowrap">Try the portal ${ic('arrR','ic-sm')}</a>
       </div>
@@ -2155,13 +2165,17 @@ function portalPreview(){
 }
 
 /* ---------- subpage hero ---------- */
+/* Light editorial page header, shared by every interior public page. Replaces
+   the old dark navy-gradient banner: that treatment is retired site-wide, not
+   just on the homepage. */
 function subHero(eyebrow, title, lede){
-  return `<section class="hero" style="padding:0"><div class="hero-grid"></div>
-    <div class="wrap" style="position:relative;padding:78px 28px">
-      <span class="eyebrow" style="color:#9FC1F0">${eyebrow}</span>
-      <h1 class="serif" style="color:#fff;font-size:clamp(32px,4.5vw,48px);margin-top:14px;max-width:760px">${title}</h1>
-      ${lede?`<p class="lede" style="color:rgba(255,255,255,.68);margin-top:16px">${lede}</p>`:''}
-    </div></section>`;
+  return `<section style="padding:84px 0 12px">
+    <div class="wrap" style="text-align:center">
+      <span class="eyebrow center" style="color:var(--gold)">${eyebrow}</span>
+      <h1 class="serif" style="font-size:clamp(32px,4.5vw,48px);margin-top:16px;max-width:760px;margin-inline:auto">${title}</h1>
+      ${lede?`<p class="lede" style="margin:16px auto 0;max-width:600px">${lede}</p>`:''}
+    </div>
+  </section>`;
 }
 
 /* ---------- HOW IT WORKS ---------- */
@@ -2266,9 +2280,18 @@ function pageCorporate(){
 /* ---------- AGENT NETWORK (public) ---------- */
 function pageAgents(){
   return subHero('The Arrival Agent Network','Vetted top producers in every major market','We don\u2019t hand your people to a directory. Every agent is selected, briefed, measured, and held to Arrival\u2019s service standards.') + `
-  <section class="section dark" style="padding-top:72px"><div class="wrap">
-    ${mapSVG('netmap')}
-    <p class="tiny" style="color:var(--mist);margin-top:10px;text-align:center">Select a market to see sample coverage data. Demonstration data.</p>
+  <section class="section" style="padding-top:8px"><div class="wrap">
+    <div class="cov-layout">
+      <div class="cov-map-cell">
+        ${mapSVG('netmap')}
+        <span class="cov-hint">${MARKETS.length} markets shown &middot; demonstration data</span>
+      </div>
+      <div class="cov-list-cell">
+        <h4>Fastest response times</h4>
+        <div>${covFastestRows()}</div>
+        <p class="cov-note">Measured from referral to first agent contact, network-wide average.</p>
+      </div>
+    </div>
   </div></section>
   <section class="section"><div class="wrap">
     <div class="grid g4">
