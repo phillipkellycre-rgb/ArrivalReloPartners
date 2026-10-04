@@ -8478,6 +8478,23 @@ function demoBanner(){
 
 
 async function boot(){
+  /* Hash deep-links, so an external page can send a visitor straight into a
+     specific entry point: #login opens the sign-in screen, #demo-<role>
+     opens a demo workspace directly. Only a bare #anchor survives into an
+     artifact's own link, which is exactly what this needs. Consumed once,
+     before the first route(), then cleared so it doesn't re-fire on reload
+     or back/forward. */
+  const hashLink = (location.hash || '').replace(/^#/, '');
+  if(hashLink){
+    try{ history.replaceState(null, '', location.pathname + location.search); }catch(e){}
+    if(hashLink === 'login' && PORTALS_ENABLED){
+      replaceUrl(BASE + '/login');
+    } else if(hashLink.indexOf('demo-') === 0 && PORTALS_ENABLED){
+      const role = hashLink.slice(5);
+      if(DEMO_USERS[role]){ demoSignIn(role); return; }
+    }
+  }
+
   const first = curPath();
   if(!PORTALS_ENABLED || !isPortalPath(first)){ route(); }
   else { document.getElementById('app').innerHTML = bootSplash(); }
